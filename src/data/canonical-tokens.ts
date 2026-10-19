@@ -301,17 +301,23 @@ const phase16OneThirtyEight: CanonicalTokenDefinition[] = [
   { id: "terra-classic-lunc", name: "Terra Luna Classic", symbol: "LUNC", chainId: "terra-classic", chainName: "Terra Classic", category: "Layer 1", isNative: true, contractAddress: null, identityNote: "Native Terra Classic asset; distinct from Terra 2.0 LUNA." },
   { id: "ethereum-ape", name: "ApeCoin", symbol: "APE", chainId: "ethereum", chainName: "Ethereum", category: "Gaming", isNative: false, contractAddress: null, identityNote: "APE on Ethereum (CoinGecko id below); no verified contract-address mapping is curated for this token, so DEX Screener market-structure data is not shown for it." },
   { id: "bitcoin-ordi", name: "ORDI", symbol: "ORDI", chainId: "bitcoin", chainName: "Bitcoin", category: "BRC-20", isNative: false, contractAddress: null, identityNote: "ORDI is a BRC-20 inscription asset on Bitcoin; it has no EVM contract, and no verified address mapping is curated, so DEX Screener market-structure data is not shown for it." },
+  // 2026-10-19 addition: gold/stablecoin RWA tokens and two more verified Binance spot + CoinGecko matches.
+  { id: "ethereum-xaut", name: "Tether Gold", symbol: "XAUT", chainId: "ethereum", chainName: "Ethereum", category: "RWA", isNative: false, contractAddress: null, identityNote: "XAUT on Ethereum (CoinGecko id below); no verified contract-address mapping is curated for this token, so DEX Screener market-structure data is not shown for it." },
+  { id: "ethereum-paxg", name: "PAX Gold", symbol: "PAXG", chainId: "ethereum", chainName: "Ethereum", category: "RWA", isNative: false, contractAddress: null, identityNote: "PAXG on Ethereum (CoinGecko id below); no verified contract-address mapping is curated for this token, so DEX Screener market-structure data is not shown for it." },
+  { id: "ethereum-rlusd", name: "Ripple USD", symbol: "RLUSD", chainId: "ethereum", chainName: "Ethereum", category: "Stablecoin", isNative: false, contractAddress: null, identityNote: "RLUSD on Ethereum (CoinGecko id below); RLUSD also exists on the XRP Ledger, which is not used as canonical identity; no verified contract-address mapping is curated for this token, so DEX Screener market-structure data is not shown for it." },
+  { id: "ethereum-spk", name: "Spark", symbol: "SPK", chainId: "ethereum", chainName: "Ethereum", category: "DeFi", isNative: false, contractAddress: null, identityNote: "SPK on Ethereum (CoinGecko id below); no verified contract-address mapping is curated for this token, so DEX Screener market-structure data is not shown for it." },
+  { id: "bnb-chain-tko", name: "Tokocrypto", symbol: "TKO", chainId: "bnb-chain", chainName: "BNB Chain", category: "Exchange token", isNative: false, contractAddress: null, identityNote: "TKO on BNB Chain (CoinGecko id below); no verified contract-address mapping is curated for this token, so DEX Screener market-structure data is not shown for it." },
 ];
 
 const retiredCanonicalSymbols = new Set([
   "ACX", "AIOZ", "ALCX", "ATH", "AURORA", "BAL", "BAND", "BGB", "BIFI",
-  "BLAST", "BLUR", "BNT", "BOBA", "CELR", "CFG", "CORE", "CTSI", "DAI",
-  "DRIFT", "DYM", "EOS", "EUL", "EURC", "FTM", "GFI", "GHST", "GMT",
-  "GNS", "GRASS", "GT", "IOTX", "KCS", "KNC", "LEO",
+  "BLAST", "BLUR", "BNT", "BOBA", "CELR", "CFG", "CORE", "CRO", "CTSI", "DAI",
+  "DRIFT", "DYM", "EOS", "EUL", "EURC", "FLR", "FTM", "GFI", "GHST", "GMT",
+  "GNS", "GRASS", "GT", "IOTX", "KAS", "KCS", "KNC", "LEO",
   "LQTY", "MAGIC", "MANTA", "METIS", "MNDE", "MON", "NEON", "NOS", "OCEAN",
   "OGN", "OKB", "OM", "ONE", "OSMO", "PEAQ", "POKT", "PRIME", "PYUSD", "REZ",
-  "RON", "RPL", "RSS3", "RVN", "SCRT", "SD", "SKL", "SSV", "STG",
-  "STORJ", "SYN", "SYS", "TAIKO", "TEL", "TLOS", "TNSR", "UMA", "USDe", "VVV",
+  "RON", "RPL", "RSR", "RSS3", "RVN", "SAFE", "SCRT", "SD", "SKL", "SSV", "STG",
+  "STORJ", "SYN", "SYS", "TAIKO", "TEL", "TLOS", "TNSR", "TUSD", "UMA", "USDE", "VVV",
   "WAXP", "WOO", "XCH", "XDC", "XMR", "XRD", "YGG", "ZETA", "ZORA",
 ]);
 

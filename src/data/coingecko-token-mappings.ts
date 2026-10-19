@@ -262,6 +262,11 @@ export const coingeckoTokenIds: Record<string, string> = {
   "terra-classic-lunc": "terra-luna",
   "ethereum-ape": "apecoin",
   "bitcoin-ordi": "ordinals",
+  "ethereum-xaut": "tether-gold",
+  "ethereum-paxg": "pax-gold",
+  "ethereum-rlusd": "ripple-usd",
+  "ethereum-spk": "spark-2",
+  "bnb-chain-tko": "tokocrypto",
 };
 
 /** Native assets use the schema's separate chain-scoped native identity. */

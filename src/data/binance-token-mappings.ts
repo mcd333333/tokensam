@@ -213,12 +213,16 @@ export const binanceSymbols: Record<string, string> = {
   "linea-linea": "LINEAUSDT",
   "solana-pump": "PUMPUSDT",
   "bnb-chain-aster": "ASTERUSDT",
-  "solana-hnt": "HNTUSDT",
   "ethereum-wlfi": "WLFIUSDT",
   "solana-trump": "TRUMPUSDT",
   "terra-classic-lunc": "LUNCUSDT",
   "ethereum-ape": "APEUSDT",
   "bitcoin-ordi": "ORDIUSDT",
+  "ethereum-xaut": "XAUTUSDT",
+  "ethereum-paxg": "PAXGUSDT",
+  "ethereum-rlusd": "RLUSDUSDT",
+  "ethereum-spk": "SPKUSDT",
+  "bnb-chain-tko": "TKOUSDT",
 };
 
 /**
@@ -234,6 +238,10 @@ export const binanceUnmapped: Record<string, { reason: CoverageReason; detail: s
   "ethereum-stg": {
     reason: "no_provider_data",
     detail: "STGUSDT exists on Binance but its status was BREAK (trading halted) when this mapping was verified on 2026-10-06, so its last price is stale and must not be served as live.",
+  },
+  "solana-hnt": {
+    reason: "no_provider_data",
+    detail: "HNTUSDT exists on Binance but its status was BREAK (trading halted) when this mapping was verified on 2026-10-19, so its last price is stale and must not be served as live.",
   },
   "cronos-cro": {
     reason: "provider_does_not_support_token",
