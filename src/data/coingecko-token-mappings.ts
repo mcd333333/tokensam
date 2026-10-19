@@ -267,6 +267,8 @@ export const coingeckoTokenIds: Record<string, string> = {
   "ethereum-rlusd": "ripple-usd",
   "ethereum-spk": "spark-2",
   "bnb-chain-tko": "tokocrypto",
+  "tron-jst": "just",
+  "ethereum-ff": "falcon-finance-ff",
 };
 
 /** Native assets use the schema's separate chain-scoped native identity. */

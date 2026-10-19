@@ -223,6 +223,8 @@ export const binanceSymbols: Record<string, string> = {
   "ethereum-rlusd": "RLUSDUSDT",
   "ethereum-spk": "SPKUSDT",
   "bnb-chain-tko": "TKOUSDT",
+  "tron-jst": "JSTUSDT",
+  "ethereum-ff": "FFUSDT",
 };
 
 /**
