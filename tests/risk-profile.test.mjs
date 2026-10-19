@@ -83,17 +83,17 @@ test("7. chronological order: drawdown sorts by time; risk samples normalize to 
   assert.deepEqual(values(hourlyRiskSamples(mixed, asOf)), [100, 101, 102], "nearest observations within 30 minutes represent hourly boundaries");
 });
 
-test("8. 24H / 7D / 30D windows use granular hourly prices and volatility starts after a short expanding warm-up", () => {
-  const prices = Array.from({ length: 30 * 24 + 1 }, (_, i) => 100 + Math.sin(i / 8) * 5 + i * 0.01);
+test("8. 24H / 7D / 21D windows use granular hourly prices and volatility starts after a short expanding warm-up", () => {
+  const prices = Array.from({ length: 21 * 24 + 1 }, (_, i) => 100 + Math.sin(i / 8) * 5 + i * 0.01);
   const points = hourly(prices);
-  for (const [period, expectedMin] of [["24H", 24], ["7D", 7 * 24], ["30D", 30 * 24]]) {
+  for (const [period, expectedMin] of [["24H", 24], ["7D", 7 * 24], ["21D", 21 * 24]]) {
     const { hourly: inWindow, drawdown, volatility } = riskProfile(points, period, asOf);
     assert.ok(inWindow.length >= expectedMin, `${period} has granular hourly samples`);
     assert.equal(drawdown.length, inWindow.length);
     assert.equal(drawdown[0].valueUsd, 0, `${period} starts at its own peak`);
     assert.ok(volatility.every((p) => pointsInPeriod([p], period, asOf).length === 1), `${period} volatility dates lie inside the window`);
   }
-  for (const period of ["24H", "7D", "30D"]) {
+  for (const period of ["24H", "7D", "21D"]) {
     const profile = riskProfile(points, period, asOf);
     assert.ok(profile.volatility.length > 0, `${period} volatility is available`);
     const firstWindowTime = Date.parse(profile.hourly[0].timestamp);
@@ -103,7 +103,7 @@ test("8. 24H / 7D / 30D windows use granular hourly prices and volatility starts
 });
 
 test("9. both series are present and independent; the card is wired into Market History", () => {
-  const { volatility, drawdown } = riskProfile(hourly(Array.from({ length: 30 * 24 + 1 }, (_, i) => 100 + i * (i % 3 ? 0.01 : -0.02))), "30D", asOf);
+  const { volatility, drawdown } = riskProfile(hourly(Array.from({ length: 21 * 24 + 1 }, (_, i) => 100 + i * (i % 3 ? 0.01 : -0.02))), "21D", asOf);
   assert.ok(volatility.length > 0 && drawdown.length > 0);
   assert.ok(volatility.every((p) => p.valueUsd >= 0) && drawdown.every((p) => p.valueUsd <= 0));
   const chart = readFileSync(new URL("../src/components/HistoricalSection.tsx", import.meta.url), "utf8");

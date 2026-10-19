@@ -19,7 +19,7 @@ export const CONTEXT_VERSION = "3";
 export type EvidenceScope = "token" | "protocol" | "chain" | "market";
 const PROVIDER_SCOPE: Record<string, EvidenceScope> = { coingecko: "token", binance: "market", defillama_coins: "token", defillama: "protocol", dexscreener: "market" };
 /** Requested windows reported to the model (all fit inside CONTEXT_HISTORY_DAYS). */
-const CONTEXT_COVERAGE_PERIODS = ["24H", "7D", "30D"] as const;
+const CONTEXT_COVERAGE_PERIODS = ["24H", "7D", "21D"] as const;
 /** History supplied to the model: one point per UTC day for this many days. */
 export const CONTEXT_HISTORY_DAYS = 30;
 const HOUR_MS = 60 * 60 * 1000;
