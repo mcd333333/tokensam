@@ -96,10 +96,19 @@ export const defillamaProtocolMappings = [
   {
     tokenId: "base-aero",
     chainId: "base",
-    externalAssetId: "aerodrome",
-    recordId: "parent#aerodrome",
+    externalAssetId: "aero-protocol",
+    recordId: "parent#aero-protocol",
     recordKind: "parent",
     protocolName: "Aerodrome (parent record)",
+    // DeFiLlama renamed this parent record's slug and id from "aerodrome"/"parent#aerodrome"
+    // to "aero-protocol"/"parent#aero-protocol" at some point after 2026-09-24 verification;
+    // the old slug started returning HTTP 400 ("Protocol not found"), which aborted this
+    // provider's entire collection run on every scheduled cycle starting 2026-10-14 (not just
+    // this protocol's own row -- fetchSnapshots/fetchHistorySnapshots loop sequentially and a
+    // thrown DefiLlamaApiError from one asset fails the whole batch). Re-verified 2026-10-21:
+    // GET /tvl/aero-protocol and GET /summary/fees/aero-protocol both resolve to id
+    // "parent#aero-protocol", aggregating the same sub-protocols as before (Aerodrome V1,
+    // Aerodrome Slipstream, Aerodrome Ignition).
     relationship: "AERO governance token associated with Aerodrome; DeFiLlama's parent record aggregates every Aerodrome sub-protocol (at verification: Aerodrome V1, Aerodrome Slipstream, Aerodrome Ignition, Aero Lite), not V1 alone",
   },
   {
