@@ -202,7 +202,7 @@ export function PeriodControl({ value, onChange, label }: { value: HistoricalPer
  * Charts of stored observations for one scope. Series and period coverage
  * come from the server; nothing is interpolated, zero-filled, or synthesized.
  */
-export function HistoryCharts({ data, series, initialPeriod = "21D", label }: { data: TokenHistoricalData; series: HistoryChartKey[]; initialPeriod?: HistoricalPeriod; label: string }) {
+export function HistoryCharts({ data, series, initialPeriod = "14D", label }: { data: TokenHistoricalData; series: HistoryChartKey[]; initialPeriod?: HistoricalPeriod; label: string }) {
   const [period, setPeriod] = useState<HistoricalPeriod>(initialPeriod);
   return (
     <div className="history-block">

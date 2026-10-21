@@ -38,7 +38,7 @@ test("1-4. 24H, 7D, 30D, and 90D windows select only stored points inside each w
 
 test("5. sparse history reports its actual span, not the requested window", () => {
   const built = series([point(5), point(2.5), point(0.7)]);
-  const coverage = built.periods["21D"];
+  const coverage = built.periods["14D"];
   assert.equal(coverage.status, "available");
   assert.equal(coverage.observationCount, 3);
   assert.equal(coverage.coverageHours, 4.3);
@@ -189,8 +189,8 @@ test("15-16. the AI context receives actual coverage; short spans are never labe
   assert.equal(day.coverageHours, 20.5);
   assert.equal(day.coversRequestedWindow, false, "20.5 hours does not cover a 24-hour window");
   assert.equal(day.coverageLabel, "3 observations spanning 20.5 hours");
-  assert.equal(price.coverage["21D"].coversRequestedWindow, false);
-  for (const coverage of Object.values(price.coverage)) assert.doesNotMatch(coverage.coverageLabel, /24H|7D|21D|24-hour|7-day|21-day/);
+  assert.equal(price.coverage["14D"].coversRequestedWindow, false);
+  for (const coverage of Object.values(price.coverage)) assert.doesNotMatch(coverage.coverageLabel, /24H|7D|14D|24-hour|7-day|14-day/);
   assert.match(SYSTEM_INSTRUCTION, /A requested window is not achieved coverage/);
   assert.equal(periodCoverage([point(23), point(0)], "24H", NOW).fullCoverage, true, "23 of 24 hours counts as covering the window");
 });

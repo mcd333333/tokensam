@@ -41,8 +41,8 @@ test("compacted and direct history produce identical chart points, risk outputs 
   }
   const histories = reads.map((rows) => buildTokenHistory("bnb-chain-cake", rows, NOW));
   assert.deepEqual(histories[1], histories[0]);
-  assert.deepEqual(riskProfile(histories[1].priceUsd.points, "21D", NOW),
-    riskProfile(histories[0].priceUsd.points, "21D", NOW));
+  assert.deepEqual(riskProfile(histories[1].priceUsd.points, "14D", NOW),
+    riskProfile(histories[0].priceUsd.points, "14D", NOW));
   const contracts = await Promise.all(clients.map((client) => client.rpc("metrics_series_recent_points", {
     p_token_ids: ["bnb-chain-cake"], p_providers: ["coingecko", "coingecko", "defillama"],
     p_metrics: ["price_usd", "volume_24h_usd", "tvl_usd"], p_now: NOW.toISOString(),

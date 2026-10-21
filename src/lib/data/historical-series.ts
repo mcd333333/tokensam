@@ -7,8 +7,8 @@ import type {
 } from "../../types/historical-data.ts";
 import { DAY_MS, SERIES_RULES, dailySamples, type ObservationRow } from "../indicators/series.ts";
 
-export const HISTORICAL_PERIODS: HistoricalPeriod[] = ["24H", "7D", "21D"];
-export const PERIOD_HOURS: Record<HistoricalPeriod, number> = { "24H": 24, "7D": 7 * 24, "21D": 21 * 24 };
+export const HISTORICAL_PERIODS: HistoricalPeriod[] = ["24H", "7D", "14D"];
+export const PERIOD_HOURS: Record<HistoricalPeriod, number> = { "24H": 24, "7D": 7 * 24, "14D": 14 * 24 };
 const HOUR_MS = 60 * 60 * 1000;
 const FULL_COVERAGE_RATIO = 0.9;
 
