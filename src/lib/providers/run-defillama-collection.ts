@@ -43,10 +43,16 @@ export async function runDefiLlamaCollection(
     now: options.now,
   });
 
-  // Fetch all provider responses before changing Supabase.
-  const { snapshots, skipped } = mode === "history"
+  // Fetch all provider responses before changing Supabase. Both fetch methods isolate
+  // each asset's request in its own try/catch, so one unresolvable slug (a DeFiLlama
+  // rename, a removed protocol) is recorded and skipped rather than aborting collection
+  // for every other curated protocol -- see the comment on fetchSnapshots for the
+  // 2026-10-14 Aerodrome incident this fixed. fetchSnapshots must keep the
+  // MarketDataProvider interface's Promise<ProviderSnapshot[]> return type, so its
+  // failures are read from provider.lastFetchFailures instead of its return value.
+  const { snapshots, skipped, failed } = mode === "history"
     ? await provider.fetchHistorySnapshots(assets)
-    : { snapshots: await provider.fetchSnapshots(assets), skipped: [] };
+    : { snapshots: await provider.fetchSnapshots(assets), skipped: [] as { tokenId: string; reason: string }[], failed: provider.lastFetchFailures };
   if (snapshots.length === 0) {
     throw new Error("DeFiLlama returned no protocol records for the curated mappings.");
   }
@@ -92,6 +98,7 @@ export async function runDefiLlamaCollection(
     returnedProtocols: snapshots.length,
     unavailable,
     skipped,
+    failed,
     requests: provider.telemetry.length,
     retriedRequests: provider.telemetry.filter((entry) => entry.attempts > 1).length,
     slowestRequest: slowest ? `${slowest.path.replace(/excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true&?/, "")} (${slowest.durationMs} ms)` : null,

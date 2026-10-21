@@ -367,6 +367,15 @@ export class DefiLlamaFundamentalsProvider implements MarketDataProvider {
   readonly providerId = PROVIDER_ID;
   /** Every request made by this instance, in order. */
   readonly telemetry: DefiLlamaRequestTelemetry[] = [];
+  /**
+   * Assets whose request threw during the most recent fetchSnapshots call
+   * (isolated per-asset so one unresolvable slug cannot abort collection for
+   * every other curated protocol -- see the comment on fetchSnapshots).
+   * fetchSnapshots must keep the MarketDataProvider interface's
+   * Promise<ProviderSnapshot[]> return type, so failures are reported here
+   * instead of in its return value.
+   */
+  lastFetchFailures: { tokenId: string; reason: string }[] = [];
   private readonly options: {
     baseUrl: string;
     writtenPermissionReference: string;
@@ -420,38 +429,68 @@ export class DefiLlamaFundamentalsProvider implements MarketDataProvider {
   /**
    * Routine collection: three small requests per protocol (current TVL, fees
    * summary, revenue summary), each resolved by the exact curated slug.
+   *
+   * Each asset is isolated in its own try/catch: a single protocol whose
+   * slug DeFiLlama has renamed, removed, or otherwise made unresolvable
+   * throws a DefiLlamaApiError (e.g. HTTP 400 "Protocol not found") that is
+   * NOT retried (see getJson's retryable check) and, before this isolation
+   * existed, propagated straight out of this loop -- aborting collection for
+   * every OTHER curated protocol too. That is exactly what happened
+   * 2026-10-14 through 2026-10-21 when DeFiLlama renamed the Aerodrome
+   * parent record's slug: tvl_usd (and fees/revenue) stopped updating for
+   * every DeFiLlama-tracked protocol, not just AERO, because one bad
+   * mapping killed the whole run on every scheduled cycle. A failed asset
+   * is now recorded (in lastFetchFailures, since this method must keep the
+   * MarketDataProvider interface's Promise<ProviderSnapshot[]> return type)
+   * and skipped; the run only fails outright if nothing came back at all
+   * (see the "no protocol records" check in runDefiLlamaCollection).
    */
   async fetchSnapshots(assets: DefiLlamaProtocolAsset[]): Promise<ProviderSnapshot[]> {
     const snapshots: ProviderSnapshot[] = [];
+    const failed: { tokenId: string; reason: string }[] = [];
     for (const asset of assets) {
-      const slug = encodeURIComponent(asset.externalAssetId);
-      const tvl = await this.request<unknown>(`/tvl/${slug}`, REQUEST_TIMEOUT_MS, true);
-      const fees = await this.request<FeeSummaryPayload>(`/summary/fees/${slug}?${FEE_SUMMARY_QUERY}&dataType=dailyFees`, REQUEST_TIMEOUT_MS, true);
-      const revenue = await this.request<FeeSummaryPayload>(`/summary/fees/${slug}?${FEE_SUMMARY_QUERY}&dataType=dailyRevenue`, REQUEST_TIMEOUT_MS, true);
-      snapshots.push(normalizeDefiLlamaCurrent(asset, { tvl, fees, revenue }, this.now().toISOString()));
+      try {
+        const slug = encodeURIComponent(asset.externalAssetId);
+        const tvl = await this.request<unknown>(`/tvl/${slug}`, REQUEST_TIMEOUT_MS, true);
+        const fees = await this.request<FeeSummaryPayload>(`/summary/fees/${slug}?${FEE_SUMMARY_QUERY}&dataType=dailyFees`, REQUEST_TIMEOUT_MS, true);
+        const revenue = await this.request<FeeSummaryPayload>(`/summary/fees/${slug}?${FEE_SUMMARY_QUERY}&dataType=dailyRevenue`, REQUEST_TIMEOUT_MS, true);
+        snapshots.push(normalizeDefiLlamaCurrent(asset, { tvl, fees, revenue }, this.now().toISOString()));
+      } catch (error) {
+        failed.push({ tokenId: asset.tokenId, reason: error instanceof Error ? error.message : "Unknown DeFiLlama request error." });
+      }
     }
+    this.lastFetchFailures = failed;
     return snapshots;
   }
 
   /** Explicit history collection (backfill): one /protocol request per protocol. */
   async fetchHistorySnapshots(
     assets: DefiLlamaProtocolAsset[],
-  ): Promise<{ snapshots: ProviderSnapshot[]; skipped: { tokenId: string; reason: string }[] }> {
+  ): Promise<{
+    snapshots: ProviderSnapshot[];
+    skipped: { tokenId: string; reason: string }[];
+    failed: { tokenId: string; reason: string }[];
+  }> {
     const snapshots: ProviderSnapshot[] = [];
     const skipped: { tokenId: string; reason: string }[] = [];
+    const failed: { tokenId: string; reason: string }[] = [];
     for (const asset of assets) {
-      const protocol = await this.request<ProtocolPayload>(
-        `/protocol/${encodeURIComponent(asset.externalAssetId)}`,
-        HISTORY_REQUEST_TIMEOUT_MS,
-        true,
-      );
-      const collectedAt = this.now().toISOString();
-      const { snapshot, skipReason } = protocol
-        ? normalizeDefiLlamaHistory(asset, protocol, collectedAt, this.now())
-        : { snapshot: null, skipReason: `DeFiLlama has no protocol record for slug "${asset.externalAssetId}".` };
-      if (snapshot) snapshots.push(snapshot);
-      else skipped.push({ tokenId: asset.tokenId, reason: skipReason ?? "No usable history." });
+      try {
+        const protocol = await this.request<ProtocolPayload>(
+          `/protocol/${encodeURIComponent(asset.externalAssetId)}`,
+          HISTORY_REQUEST_TIMEOUT_MS,
+          true,
+        );
+        const collectedAt = this.now().toISOString();
+        const { snapshot, skipReason } = protocol
+          ? normalizeDefiLlamaHistory(asset, protocol, collectedAt, this.now())
+          : { snapshot: null, skipReason: `DeFiLlama has no protocol record for slug "${asset.externalAssetId}".` };
+        if (snapshot) snapshots.push(snapshot);
+        else skipped.push({ tokenId: asset.tokenId, reason: skipReason ?? "No usable history." });
+      } catch (error) {
+        failed.push({ tokenId: asset.tokenId, reason: error instanceof Error ? error.message : "Unknown DeFiLlama request error." });
+      }
     }
-    return { snapshots, skipped };
+    return { snapshots, skipped, failed };
   }
 }
