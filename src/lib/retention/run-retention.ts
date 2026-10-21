@@ -6,6 +6,18 @@ const MAX_BATCHES_PER_FUNCTION = 1000;
 // source rows. Keeping the group limit at 80 bounds each RPC's aggregation and
 // deletion work under the PostgREST statement timeout.
 const DAILY_AGGREGATION_GROUP_BATCH_SIZE = 80;
+// retention_expire_raw_provider_records_batch deletes rows that
+// token_metric_observations.raw_record_id and provider_pairs.raw_record_id
+// reference, so each deleted row fires both FK triggers. The
+// token_metric_observations one alone was measured at ~10-15ms per row
+// (2026-10-21, table at ~577K rows) even on a pure buffer-cache hit with no
+// lock contention -- not an indexing problem, the index is 6.2MB and already
+// used; this project's compute tier appears to add real per-lookup latency.
+// At that rate BATCH_SIZE=1000 needs 10-15s, over PostgREST's ~8s
+// statement_timeout on every call, so the function deleted 0 rows on every
+// scheduled run and raw_provider_records grew unchecked. 300 rows keeps the
+// FK-check cost at ~3-4.5s, leaving headroom under the 8s budget.
+const RAW_PROVIDER_RECORDS_BATCH_SIZE = 300;
 
 // Retention policy:
 // - Keep granular observations for the chart-required
@@ -75,7 +87,9 @@ export async function runRetentionBatches(client: SupabaseAdminClient, deadlineA
       }
       const batchSize = fn === "retention_collapse_daily_batch"
         ? DAILY_AGGREGATION_GROUP_BATCH_SIZE
-        : BATCH_SIZE;
+        : fn === "retention_expire_raw_provider_records_batch"
+          ? RAW_PROVIDER_RECORDS_BATCH_SIZE
+          : BATCH_SIZE;
       const { data, error } = await client.rpc(fn, { batch_size: batchSize });
       if (error) {
         failed[fn] = error.message;
