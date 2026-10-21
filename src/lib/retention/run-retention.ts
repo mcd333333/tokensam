@@ -6,20 +6,6 @@ const MAX_BATCHES_PER_FUNCTION = 1000;
 // source rows. Keeping the group limit at 80 bounds each RPC's aggregation and
 // deletion work under the PostgREST statement timeout.
 const DAILY_AGGREGATION_GROUP_BATCH_SIZE = 80;
-// retention_expire_raw_provider_records_batch deletes rows that
-// token_metric_observations.raw_record_id and provider_pairs.raw_record_id
-// reference, so each deleted row fires both FK triggers. The
-// token_metric_observations one alone was measured at ~10-15ms per row on
-// 2026-10-21 (even on a pure buffer-cache hit with no lock contention -- not
-// an indexing problem, the index is 6.2MB and already used), then ~32.5ms per
-// row an hour later with the table only slightly larger -- the per-row cost
-// is not fixed, it is actively degrading under this project's compute tier.
-// A batch size tuned to one measurement is not safe here. 100 rows (already
-// the convention for the daily-aggregation batches above) leaves real
-// headroom under PostgREST's ~8s statement_timeout even if the per-row cost
-// keeps climbing, at the cost of draining the raw_provider_records backlog
-// more slowly.
-const RAW_PROVIDER_RECORDS_BATCH_SIZE = 100;
 
 // Retention policy:
 // - Keep granular observations for the chart-required
@@ -56,11 +42,23 @@ const RAW_PROVIDER_RECORDS_BATCH_SIZE = 100;
 // VACUUM FULL (20261006090000/20261007120000): a session's default statement_timeout is
 // far longer, and the same query that timed out every time here completed in well under
 // a second once not bound by PostgREST's connection.
+//
+// retention_expire_raw_provider_records_batch is ALSO not listed here any more, for the
+// same reason, discovered the same way: each row it deletes fires the
+// token_metric_observations_raw_record_id_fkey trigger, which was measured climbing from
+// ~10-15ms/row to ~32.5ms/row to ~59ms/row over a single afternoon on 2026-10-21 (even on
+// pure buffer-cache hits, no lock contention -- not an indexing problem) under this
+// project's compute tier. No fixed batch size tuned to one measurement stays safe under an
+// actively degrading per-row cost and PostgREST's ~8s timeout, so it kept deleting 0 rows
+// every scheduled run at batch sizes 1000, 300, and then 100, letting raw_provider_records
+// grow unchecked. Moved to its own pg_cron job (tokensam-raw-provider-records-expiry,
+// 20261021163000_raw_provider_records_expiry_pg_cron.sql) running as the postgres role,
+// whose statement_timeout is 5 minutes -- the same structural fix as the non-chart-collapse
+// incident above, not another batch-size guess.
 const RETENTION_FUNCTIONS = [
   "retention_collapse_daily_batch",
   "retention_expire_observations_batch",
   "retention_expire_daily_aggregates_batch",
-  "retention_expire_raw_provider_records_batch",
 ] as const;
 
 export type RetentionFunctionName = (typeof RETENTION_FUNCTIONS)[number];
@@ -89,9 +87,7 @@ export async function runRetentionBatches(client: SupabaseAdminClient, deadlineA
       }
       const batchSize = fn === "retention_collapse_daily_batch"
         ? DAILY_AGGREGATION_GROUP_BATCH_SIZE
-        : fn === "retention_expire_raw_provider_records_batch"
-          ? RAW_PROVIDER_RECORDS_BATCH_SIZE
-          : BATCH_SIZE;
+        : BATCH_SIZE;
       const { data, error } = await client.rpc(fn, { batch_size: batchSize });
       if (error) {
         failed[fn] = error.message;
