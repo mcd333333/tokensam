@@ -9,15 +9,17 @@ const DAILY_AGGREGATION_GROUP_BATCH_SIZE = 80;
 // retention_expire_raw_provider_records_batch deletes rows that
 // token_metric_observations.raw_record_id and provider_pairs.raw_record_id
 // reference, so each deleted row fires both FK triggers. The
-// token_metric_observations one alone was measured at ~10-15ms per row
-// (2026-10-21, table at ~577K rows) even on a pure buffer-cache hit with no
-// lock contention -- not an indexing problem, the index is 6.2MB and already
-// used; this project's compute tier appears to add real per-lookup latency.
-// At that rate BATCH_SIZE=1000 needs 10-15s, over PostgREST's ~8s
-// statement_timeout on every call, so the function deleted 0 rows on every
-// scheduled run and raw_provider_records grew unchecked. 300 rows keeps the
-// FK-check cost at ~3-4.5s, leaving headroom under the 8s budget.
-const RAW_PROVIDER_RECORDS_BATCH_SIZE = 300;
+// token_metric_observations one alone was measured at ~10-15ms per row on
+// 2026-10-21 (even on a pure buffer-cache hit with no lock contention -- not
+// an indexing problem, the index is 6.2MB and already used), then ~32.5ms per
+// row an hour later with the table only slightly larger -- the per-row cost
+// is not fixed, it is actively degrading under this project's compute tier.
+// A batch size tuned to one measurement is not safe here. 100 rows (already
+// the convention for the daily-aggregation batches above) leaves real
+// headroom under PostgREST's ~8s statement_timeout even if the per-row cost
+// keeps climbing, at the cost of draining the raw_provider_records backlog
+// more slowly.
+const RAW_PROVIDER_RECORDS_BATCH_SIZE = 100;
 
 // Retention policy:
 // - Keep granular observations for the chart-required
