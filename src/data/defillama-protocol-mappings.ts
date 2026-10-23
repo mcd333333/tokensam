@@ -205,15 +205,6 @@ export const defillamaProtocolMappings = [
     relationship: "EIGEN token associated with the EigenCloud (prev. EigenLayer) restaking protocol record; restaked-asset TVL is protocol data, not EIGEN-token value",
   },
   {
-    tokenId: "ethereum-rpl",
-    chainId: "ethereum",
-    externalAssetId: "rocket-pool",
-    recordId: "900",
-    recordKind: "standalone",
-    protocolName: "Rocket Pool",
-    relationship: "RPL governance token associated with the Rocket Pool liquid-staking protocol; staked-ETH TVL is protocol data, not RPL-token value",
-  },
-  {
     tokenId: "ethereum-cvx",
     chainId: "ethereum",
     externalAssetId: "convex-finance",

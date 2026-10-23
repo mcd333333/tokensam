@@ -74,13 +74,36 @@ export async function runDefiLlamaCollection(
   }));
   // onConflict targets (provider_id,token_id): see the identical fix and rationale in
   // run-coingecko-collection.ts and run-defillama-coins-collection.ts.
-  const { error: mappingsError } = await client
-    .from("provider_token_mappings")
-    .upsert(mappings, { onConflict: "provider_id,token_id" });
-  throwOnSupabaseError(mappingsError, "upsert DeFiLlama protocol mappings");
+  //
+  // Upserted one row at a time, not as a single batch: a single-batch upsert containing a
+  // mapping for a token that no longer exists in `tokens` (e.g. a retired canonical token
+  // whose defillamaProtocolMappings entry was never cleaned up) violates
+  // provider_token_mappings_token_id_chain_id_fkey and fails the WHOLE batch, which aborted
+  // mappings (and therefore every downstream snapshot persist, since this runs before
+  // persistProviderSnapshots) for every curated protocol on every scheduled run from
+  // 2026-10-23 11:55 onward -- discovered when ethereum-rpl's mapping outlived RPL's removal
+  // from canonical-tokens.ts. A failed mapping is recorded and skipped, the same per-asset
+  // isolation already applied to fetchSnapshots/fetchHistorySnapshots for the identical
+  // 2026-10-14 Aerodrome incident.
+  const mappingFailures: { tokenId: string; reason: string }[] = [];
+  for (const mapping of mappings) {
+    const { error } = await client
+      .from("provider_token_mappings")
+      .upsert(mapping, { onConflict: "provider_id,token_id" });
+    if (error) mappingFailures.push({ tokenId: mapping.token_id, reason: error.message });
+  }
 
-  const persisted = await persistProviderSnapshots(client, snapshots);
-  const unavailable = snapshots.flatMap((snapshot) =>
+  // Never persist a snapshot for a token whose mapping upsert just failed: its
+  // observations would hit the same token_id/chain_id FK the mapping did,
+  // and persistProviderSnapshots' chunked insert fails its whole chunk (not
+  // per-row) on any error, which would take down every other protocol
+  // sharing that chunk -- the exact failure this mapping-level isolation
+  // exists to prevent.
+  const failedMappingTokenIds = new Set(mappingFailures.map((failure) => failure.tokenId));
+  const persistableSnapshots = snapshots.filter((snapshot) => !failedMappingTokenIds.has(snapshot.asset.tokenId));
+
+  const persisted = await persistProviderSnapshots(client, persistableSnapshots);
+  const unavailable = persistableSnapshots.flatMap((snapshot) =>
     snapshot.observations
       .filter((item) => item.status === "unavailable")
       .map((item) => ({ tokenId: item.tokenId, metricId: item.metricId })),
@@ -95,10 +118,10 @@ export async function runDefiLlamaCollection(
     provider: "defillama",
     mode,
     mappedProtocols: defillamaProtocolMappings.length,
-    returnedProtocols: snapshots.length,
+    returnedProtocols: persistableSnapshots.length,
     unavailable,
     skipped,
-    failed,
+    failed: [...failed, ...mappingFailures],
     requests: provider.telemetry.length,
     retriedRequests: provider.telemetry.filter((entry) => entry.attempts > 1).length,
     slowestRequest: slowest ? `${slowest.path.replace(/excludeTotalDataChart=true&excludeTotalDataChartBreakdown=true&?/, "")} (${slowest.durationMs} ms)` : null,
