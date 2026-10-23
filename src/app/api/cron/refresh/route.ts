@@ -44,76 +44,88 @@ export async function GET(request: Request): Promise<Response> {
       only: requested as ProviderStep[] | undefined,
     });
 
-    // Check storage after every scheduled refresh so the Cloudflare scheduler can
-    // alert before the Supabase Free-plan limit is reached. The alert is edge-triggered:
-    // once 450 MiB is crossed, it fires once and stays quiet until usage falls back below
-    // the threshold and crosses it again.
-    const { data: databaseSizeBytes, error: databaseSizeError } = await client.rpc("get_database_size_bytes");
-    if (databaseSizeError) {
-      console.error("Database size check failed:", databaseSizeError);
-    }
-
+    // Database size and quota don't move meaningfully within one 5-minute Cloudflare
+    // Worker tick, so this whole monitoring block -- ~5-6 Supabase round trips, all pure
+    // overhead on top of whatever runDataRefresh itself did -- only runs when something
+    // was actually due this tick (or on a forced/manual call, which wants full detail).
+    // The shortest REFRESH_POLICY interval is 15 minutes (coingecko/dexscreener), so this
+    // still checks at least that often: "every ~15 min" instead of every 5, cutting this
+    // block's own invocation count by roughly two-thirds without widening how long a real
+    // threshold crossing could go unnoticed by more than one due-cycle.
+    let databaseSizeBytes: number | null = null;
     let databaseAlert = false;
-    const databaseSizeMb = typeof databaseSizeBytes === "number"
-      ? databaseSizeBytes / (1024 * 1024)
-      : null;
-    if (typeof databaseSizeBytes === "number") {
-      const thresholdBytes = 450 * 1024 * 1024;
-      const { data: monitorState, error: monitorStateError } = await client
-        .from("database_monitor_state")
-        .select("alert_active")
-        .eq("id", true)
-        .maybeSingle();
-
-      if (monitorStateError) {
-        console.error("Database monitor state read failed:", monitorStateError);
-      } else {
-        const isOverThreshold = databaseSizeBytes >= thresholdBytes;
-        if (isOverThreshold && !monitorState?.alert_active) {
-          databaseAlert = true;
-        }
-
-        const { error: monitorStateWriteError } = await client
-          .from("database_monitor_state")
-          .upsert({
-            id: true,
-            alert_active: isOverThreshold,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "id" });
-
-        if (monitorStateWriteError) {
-          console.error("Database monitor state write failed:", monitorStateWriteError);
-        }
-      }
-    }
-
-    // Egress and the two log metrics (Log Ingestion, Log Query) have no SQL-visible
-    // number the way database size does: evaluateQuotaLevel compares this app's own
-    // approximate daily request/byte tracking (quota-tracker.ts) plus the database
-    // size just read above against the free-plan budgets in quota-config.ts.
-    // Edge-triggered the same way as the database alert above: previousLevel is read
-    // before writeThrottleState overwrites it, so quotaAlert only fires on the
-    // transition into a worse level, not on every tick already at that level.
+    let databaseSizeMb: number | null = null;
     let quotaAlert = false;
     let quota: Awaited<ReturnType<typeof evaluateQuotaLevel>> | null = null;
-    try {
-      const { data: previousState } = await client.from("quota_throttle_state").select("level").eq("id", true).maybeSingle();
-      const previousLevel = (previousState as { level?: string } | null)?.level ?? "none";
-      quota = await evaluateQuotaLevel(client, typeof databaseSizeBytes === "number" ? databaseSizeBytes : null);
-      await writeThrottleState(client, quota);
-      const severity = { none: 0, warn: 1, critical: 2 } as const;
-      if (quota.level !== "none" && severity[quota.level] > severity[previousLevel as keyof typeof severity]) {
-        quotaAlert = true;
+
+    if (result.due.length > 0 || trigger === "manual") {
+      // Check storage after every due refresh so the Cloudflare scheduler can alert before
+      // the Supabase Free-plan limit is reached. The alert is edge-triggered: once 450 MiB
+      // is crossed, it fires once and stays quiet until usage falls back below the
+      // threshold and crosses it again.
+      const { data: sizeData, error: databaseSizeError } = await client.rpc("get_database_size_bytes");
+      if (databaseSizeError) {
+        console.error("Database size check failed:", databaseSizeError);
       }
-    } catch (error) {
-      console.error("Quota level evaluation failed:", error);
+      databaseSizeBytes = typeof sizeData === "number" ? sizeData : null;
+      databaseSizeMb = databaseSizeBytes !== null ? databaseSizeBytes / (1024 * 1024) : null;
+
+      if (databaseSizeBytes !== null) {
+        const thresholdBytes = 450 * 1024 * 1024;
+        const { data: monitorState, error: monitorStateError } = await client
+          .from("database_monitor_state")
+          .select("alert_active")
+          .eq("id", true)
+          .maybeSingle();
+
+        if (monitorStateError) {
+          console.error("Database monitor state read failed:", monitorStateError);
+        } else {
+          const isOverThreshold = databaseSizeBytes >= thresholdBytes;
+          if (isOverThreshold && !monitorState?.alert_active) {
+            databaseAlert = true;
+          }
+
+          const { error: monitorStateWriteError } = await client
+            .from("database_monitor_state")
+            .upsert({
+              id: true,
+              alert_active: isOverThreshold,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "id" });
+
+          if (monitorStateWriteError) {
+            console.error("Database monitor state write failed:", monitorStateWriteError);
+          }
+        }
+      }
+
+      // Egress and the two log metrics (Log Ingestion, Log Query) have no SQL-visible
+      // number the way database size does: evaluateQuotaLevel compares this app's own
+      // approximate daily request/byte tracking (quota-tracker.ts) plus the database
+      // size just read above against the free-plan budgets in quota-config.ts.
+      // Edge-triggered the same way as the database alert above: previousLevel is read
+      // before writeThrottleState overwrites it, so quotaAlert only fires on the
+      // transition into a worse level, not on every tick already at that level.
+      try {
+        const { data: previousState } = await client.from("quota_throttle_state").select("level").eq("id", true).maybeSingle();
+        const previousLevel = (previousState as { level?: string } | null)?.level ?? "none";
+        quota = await evaluateQuotaLevel(client, databaseSizeBytes);
+        await writeThrottleState(client, quota);
+        const severity = { none: 0, warn: 1, critical: 2 } as const;
+        if (quota.level !== "none" && severity[quota.level] > severity[previousLevel as keyof typeof severity]) {
+          quotaAlert = true;
+        }
+      } catch (error) {
+        console.error("Quota level evaluation failed:", error);
+      }
+      // Keeps quota_usage_counters from becoming an unbounded-growth contributor in its
+      // own right; cheap and a no-op on every call except the first one past midnight.
+      client.rpc("prune_quota_usage_counters").then(
+        ({ error }) => { if (error) console.error("Quota usage counter pruning failed:", error.message); },
+        (error: unknown) => console.error("Quota usage counter pruning failed:", error),
+      );
     }
-    // Keeps quota_usage_counters from becoming an unbounded-growth contributor in its
-    // own right; cheap and a no-op on every call except the first one past midnight.
-    client.rpc("prune_quota_usage_counters").then(
-      ({ error }) => { if (error) console.error("Quota usage counter pruning failed:", error.message); },
-      (error: unknown) => console.error("Quota usage counter pruning failed:", error),
-    );
 
     // "lost_ownership" means this invocation's lease was reclaimed mid-run (see
     // runDataRefresh): its recorded steps are still committed, but it could not
@@ -128,7 +140,7 @@ export async function GET(request: Request): Promise<Response> {
       failed: result.steps.filter((step) => step.status === "failed").map((step) => step.step),
       timedOut: result.steps.filter((step) => step.status === "timed_out").map((step) => step.step),
       metrics: result.steps.find((step) => step.step === "metrics")?.status ?? null,
-      databaseSizeBytes: typeof databaseSizeBytes === "number" ? databaseSizeBytes : null,
+      databaseSizeBytes,
       databaseSizeMb,
       databaseAlert,
       quotaLevel: quota?.level ?? null,
