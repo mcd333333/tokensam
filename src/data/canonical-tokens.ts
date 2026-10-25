@@ -312,15 +312,15 @@ const phase16OneThirtyEight: CanonicalTokenDefinition[] = [
 ];
 
 const retiredCanonicalSymbols = new Set([
-  "ACX", "AIOZ", "ALCX", "ATH", "AURORA", "BAL", "BAND", "BGB", "BIFI",
+  "ACX", "AIOZ", "ALCX", "API3", "ATH", "AURORA", "BAL", "BAND", "BGB", "BIFI",
   "BLAST", "BLUR", "BNT", "BOBA", "CELR", "CFG", "CORE", "CRO", "CTSI", "DAI",
   "DRIFT", "DYM", "EOS", "EUL", "EURC", "FLR", "FTM", "GFI", "GHST", "GMT",
   "GNS", "GRASS", "GT", "IOTX", "KAS", "KCS", "KNC", "LEO",
-  "LQTY", "MAGIC", "MANTA", "METIS", "MNDE", "MON", "NEON", "NOS", "OCEAN",
+  "LQTY", "MAGIC", "MANTA", "METIS", "MNDE", "MON", "NEON", "NOS", "NOT", "OCEAN",
   "OGN", "OKB", "OM", "ONE", "OSMO", "PEAQ", "POKT", "PRIME", "PYUSD", "REZ",
   "RON", "RPL", "RSR", "RSS3", "RVN", "SAFE", "SCRT", "SD", "SKL", "SSV", "STG",
   "STORJ", "SYN", "SYS", "TAIKO", "TEL", "TLOS", "TNSR", "TUSD", "UMA", "USDE", "VVV",
-  "WAXP", "WOO", "XCH", "XDC", "XMR", "XRD", "YGG", "ZETA", "ZORA",
+  "WAXP", "WOO", "XCH", "XDC", "XMR", "XRD", "YGG", "ZETA", "ZIL", "ZORA",
 ]);
 
 export const canonicalTokens: CanonicalTokenDefinition[] = [
