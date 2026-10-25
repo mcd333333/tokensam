@@ -81,9 +81,9 @@ function fail(error: { message: string } | null, action: string): void {
   if (error) throw new Error(`Supabase ${action} failed: ${error.message}`);
 }
 
-type PageQuery = (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string; code?: string } | null }>;
+export type PageQuery = (from: number, to: number) => PromiseLike<{ data: unknown[] | null; error: { message: string; code?: string } | null }>;
 /** Offset paging, kept for the small raw-record reads where depth never grows. */
-async function readPages<T>(query: PageQuery, action: string): Promise<{ rows: T[]; missing: boolean }> {
+export async function readPages<T>(query: PageQuery, action: string): Promise<{ rows: T[]; missing: boolean }> {
   const rows: T[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await query(offset, offset + PAGE_SIZE - 1);

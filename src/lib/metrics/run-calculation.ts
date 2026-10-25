@@ -1,5 +1,5 @@
 import { CALCULATED_METRICS, calculateAllMetrics, type ObservationInput, type RawRecordInput, type TokenInput } from "./engine.ts";
-import { LATEST_READ_WINDOW_MS, PROVIDERS, mergeById, readLatestRawRecords } from "../data/observation-reads.ts";
+import { LATEST_READ_WINDOW_MS, PROVIDERS, mergeById, readLatestRawRecords, readPages } from "../data/observation-reads.ts";
 import { recordApproxRead } from "../monitoring/quota-tracker.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
@@ -56,12 +56,26 @@ async function readTokens(client: SupabaseAdminClient): Promise<TokenInput[]> {
  * including retained daily aggregates, plus the one ~24h-prior point alignedCrossChange needs), so only the rows the engine
  * actually reads cross the wire -- measured live at ~947KB/run for the same data, a ~97%
  * reduction with no change to which rows feed the calculation.
+ *
+ * Both calls are paged with readPages/.range(): PostgREST applies a default row limit to
+ * RPC calls returning sets, same as an ordinary table select, and an unpaginated call
+ * silently truncates past it with no error. At 154 tracked tokens this project crossed that
+ * limit (latest_observations_bounded: 1,950 rows; metrics_series_recent_points: 1,087 rows,
+ * both over the ~1000-row default) and every token whose id sorted alphabetically past the
+ * cutoff (observed live: everything from "ethereum-spk" onward) silently lost its
+ * volume_24h_usd row from this read, surfacing as "Required input unavailable: CoinGecko
+ * 24-hour volume" for volume_to_market_cap on those tokens specifically -- reproducible
+ * across multiple calculation runs, not a one-off timing race. Every other read in this
+ * codebase already pages through readPages/readLatestObservations for exactly this reason;
+ * these two RPC calls were the only ones left unpaginated.
  */
 async function readObservations(client: SupabaseAdminClient, tokenIds: string[], now: Date): Promise<ObservationInput[]> {
   const since = new Date(now.getTime() - LATEST_READ_WINDOW_MS).toISOString();
-  const [{ data: latestData, error: latestError }, { data: seriesData, error: seriesError }] = await Promise.all([
-    client.rpc("latest_observations_bounded", { p_token_ids: tokenIds, p_provider_ids: PROVIDERS, p_since: since }),
-    client.rpc("metrics_series_recent_points", {
+  const [{ rows: latest }, { rows: history }] = await Promise.all([
+    readPages<ObservationInput>((from, to) => client.rpc("latest_observations_bounded", {
+      p_token_ids: tokenIds, p_provider_ids: PROVIDERS, p_since: since,
+    }).range(from, to), "read latest observations (bounded rpc)"),
+    readPages<ObservationInput>((from, to) => client.rpc("metrics_series_recent_points", {
       p_token_ids: tokenIds,
       p_providers: SERIES_INPUTS.map((series) => series.providerId),
       p_metrics: SERIES_INPUTS.map((series) => series.metricId),
@@ -69,12 +83,8 @@ async function readObservations(client: SupabaseAdminClient, tokenIds: string[],
       p_horizon_hours: 24,
       p_tolerance_hours: 6,
       p_max_lookback_days: SERIES_LOOKBACK_DAYS,
-    }),
+    }).range(from, to), "read metrics series recent points (rpc)"),
   ]);
-  throwOnError(latestError, "read latest observations (bounded rpc)");
-  throwOnError(seriesError, "read metrics series recent points (rpc)");
-  const latest = (latestData ?? []) as ObservationInput[];
-  const history = (seriesData ?? []) as ObservationInput[];
   recordApproxRead(client, latest);
   recordApproxRead(client, history);
   return mergeById(latest, history).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at) || a.id - b.id);
