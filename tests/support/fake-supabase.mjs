@@ -230,7 +230,11 @@ export function createFakeSupabase({ seed = {}, views = true, missingTables = []
     calls.push({ table: name, op: "rpc" });
     const handler = RPCS[name];
     if (!handler) return Promise.resolve({ data: null, error: { message: `rpc '${name}' not implemented in the fake Supabase client` } });
-    return Promise.resolve({ data: handler(params), error: null });
+    const data = handler(params);
+    const response = Promise.resolve({ data, error: null });
+    // Real PostgREST RPC builders are awaitable and also support .range() pagination.
+    response.range = (from, to) => Promise.resolve({ data: Array.isArray(data) ? data.slice(from, to + 1) : data, error: null });
+    return response;
   }
 
   return {

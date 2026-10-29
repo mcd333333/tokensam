@@ -110,27 +110,27 @@ export async function repairCoinGeckoDailyGaps(
   const config = getCoinGeckoConfig(options.env);
   const endDate = utcDateDaysAgo(1, now());
 
-  const [priceGapsResult, otherGapsResult, intradayGapsResult] = await Promise.all([
-    client.rpc("get_coingecko_daily_gaps", {
-      p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
-      p_end_date: endDate,
-      p_metric_ids: [PRICE_METRIC],
-    }),
-    client.rpc("get_coingecko_daily_gaps", {
-      p_start_date: utcDateDaysAgo(COINGECKO_GAP_DAYS, now()),
-      p_end_date: endDate,
-      p_metric_ids: OTHER_METRICS,
-    }),
-    // Covers through "today" (not just completed days): an intraday gap can still be
-    // closing out right now, unlike the whole-day checks above which only look at
-    // fully completed UTC days.
-    client.rpc("get_coingecko_intraday_gaps", {
-      p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
-      p_end_date: utcDateDaysAgo(0, now()),
-      p_min_gap_hours: INTRADAY_GAP_HOURS,
-      p_metric_ids: INTRADAY_METRICS,
-    }),
-  ]);
+  // Sequential on purpose: each audit takes 2-4s on its own, and run concurrently they
+  // contend and exceed the API role's 8s statement_timeout, failing the whole repair.
+  const priceGapsResult = await client.rpc("get_coingecko_daily_gaps", {
+    p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
+    p_end_date: endDate,
+    p_metric_ids: [PRICE_METRIC],
+  });
+  const otherGapsResult = await client.rpc("get_coingecko_daily_gaps", {
+    p_start_date: utcDateDaysAgo(COINGECKO_GAP_DAYS, now()),
+    p_end_date: endDate,
+    p_metric_ids: OTHER_METRICS,
+  });
+  // Covers through "today" (not just completed days): an intraday gap can still be
+  // closing out right now, unlike the whole-day checks above which only look at
+  // fully completed UTC days.
+  const intradayGapsResult = await client.rpc("get_coingecko_intraday_gaps", {
+    p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
+    p_end_date: utcDateDaysAgo(0, now()),
+    p_min_gap_hours: INTRADAY_GAP_HOURS,
+    p_metric_ids: INTRADAY_METRICS,
+  });
   if (priceGapsResult.error) throw new Error(`Supabase CoinGecko price_usd daily gap audit failed: ${priceGapsResult.error.message}`);
   if (otherGapsResult.error) throw new Error(`Supabase CoinGecko daily gap audit failed: ${otherGapsResult.error.message}`);
   if (intradayGapsResult.error) throw new Error(`Supabase CoinGecko intraday gap audit failed: ${intradayGapsResult.error.message}`);
