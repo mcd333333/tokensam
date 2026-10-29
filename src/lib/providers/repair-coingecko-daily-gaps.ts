@@ -23,14 +23,12 @@ export const INTRADAY_GAP_HOURS = 6;
 
 const PRICE_METRIC = "price_usd";
 const OTHER_METRICS = ["market_cap_usd", "volume_24h_usd"];
-// market_cap_usd is deliberately excluded here: retention collapses it to one
-// observation/day beyond 48h (see run-retention.ts), so every daily collapse point
-// would otherwise look like a ~24h "intraday gap" forever, even with no real
-// outage. price_usd and volume_24h_usd are the only metrics retained continuously
-// granular, so they're the only ones an intraday gap check is meaningful for.
-const INTRADAY_METRICS = [PRICE_METRIC, "volume_24h_usd"];
-// A price/volume outage is an outage of every CoinGecko series (one request feeds all three), so the
-// midnight repair also fills market_cap_usd, which the indicators read at midnight as well.
+// All three series the indicators read at UTC midnight are audited. market_cap_usd used to be excluded
+// because retention collapses it to one point per day, so every collapsed day looked like a ~24h
+// "intraday gap"; the audit now only keeps gaps that swallow a midnight (get_coingecko_midnight_gaps),
+// which a one-point-per-day series does not have. Each metric is repaired only where its own series
+// has the hole, so a metric that was already repaired is never written twice.
+const INTRADAY_METRICS = [PRICE_METRIC, "volume_24h_usd", "market_cap_usd"];
 
 type Gap = { token_id: string; metric_id: string; missing_date: string };
 type IntradayGap = { token_id: string; metric_id: string; gap_start: string; gap_end: string };
@@ -87,9 +85,14 @@ function toObservationRows(
   // One point per metric per swallowed midnight -- the nearest provider timestamp within tolerance --
   // not every hourly point of the outage: the indicators only ever read midnight samples, and
   // retention would collapse the rest to one point per day again (insert/delete churn).
-  const midnights = [...new Set(intradayGaps.flatMap(gapMidnights))];
+  const midnightsByMetric = new Map<string, Set<number>>();
+  for (const gap of intradayGaps) {
+    const set = midnightsByMetric.get(gap.metric_id) ?? new Set<number>();
+    for (const midnight of gapMidnights(gap)) set.add(midnight);
+    midnightsByMetric.set(gap.metric_id, set);
+  }
   const midnightRows = new Set<(typeof snapshot.observations)[number]>();
-  for (const metricId of new Set(snapshot.observations.map((row) => row.metricId))) {
+  for (const [metricId, midnights] of midnightsByMetric) {
     const candidates = snapshot.observations.filter((row) => row.metricId === metricId);
     for (const midnight of midnights) {
       let best: (typeof candidates)[number] | null = null;
