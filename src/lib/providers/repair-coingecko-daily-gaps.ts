@@ -177,7 +177,13 @@ export async function repairCoinGeckoDailyGaps(
   // Covers through "today" (not just completed days): an intraday gap can still be
   // closing out right now, unlike the whole-day checks below which only look at
   // fully completed UTC days.
-  const intradayRows = await audit<IntradayGap>("intraday gap audit", () => client.rpc("get_coingecko_intraday_gaps", {
+  //
+  // get_coingecko_midnight_gaps returns only the gaps that swallow a UTC midnight (a few hundred rows).
+  // The unfiltered get_coingecko_intraday_gaps returns ~6,600 rows, because every retention-collapsed
+  // day is a 24h "gap", and PostgREST silently truncates a response at 1,000 rows: only the first ~24
+  // tokens were ever seen, and once those were repaired the audit reported nothing to do for the
+  // other 131.
+  const intradayRows = await audit<IntradayGap>("intraday gap audit", () => client.rpc("get_coingecko_midnight_gaps", {
     p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
     p_end_date: utcDateDaysAgo(0, now()),
     p_min_gap_hours: INTRADAY_GAP_HOURS,

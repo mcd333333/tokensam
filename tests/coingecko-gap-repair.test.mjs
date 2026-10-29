@@ -47,7 +47,7 @@ test("repair writes only the swallowed midnight, for every CoinGecko series, and
   const rpcCalls = [];
   db.client.rpc = async (name) => {
     rpcCalls.push(name);
-    return { data: name === "get_coingecko_intraday_gaps" ? gaps : [], error: null };
+    return { data: name === "get_coingecko_midnight_gaps" ? gaps : [], error: null };
   };
   const requested = [];
   const fetchImpl = async (input) => {
@@ -57,7 +57,7 @@ test("repair writes only the swallowed midnight, for every CoinGecko series, and
 
   const result = await repairCoinGeckoDailyGaps(db.client, { now: () => NOW, fetchImpl, sleep: noSleep, env: ENV });
 
-  assert.deepEqual(rpcCalls, ["get_coingecko_intraday_gaps", "get_coingecko_daily_gaps", "get_coingecko_daily_gaps"], "audits run one at a time, intraday (midnight gaps) first");
+  assert.deepEqual(rpcCalls, ["get_coingecko_midnight_gaps", "get_coingecko_daily_gaps", "get_coingecko_daily_gaps"], "audits run one at a time, intraday (midnight gaps) first");
   assert.equal(result.affectedTokens, 1, "the collapsed-day-only token is not an outage");
   assert.equal(result.remainingTokens, 0);
   assert.equal(requested.length, 1);
@@ -74,7 +74,7 @@ test("repair writes only the swallowed midnight, for every CoinGecko series, and
 test("repair does nothing when no gap swallows a midnight", async () => {
   const db = createFakeSupabase();
   db.client.rpc = async (name) => ({
-    data: name === "get_coingecko_intraday_gaps"
+    data: name === "get_coingecko_midnight_gaps"
       ? [{ token_id: TOKEN.id, metric_id: "price_usd", gap_start: "2026-10-05T00:00:05Z", gap_end: "2026-10-06T00:00:03Z" }]
       : [],
     error: null,
@@ -112,7 +112,7 @@ test("a timed-out daily audit does not stop the intraday midnight repair, and to
   const timeout = { data: null, error: { message: "canceling statement due to statement timeout" } };
 
   const db = createFakeSupabase({ seed: { provider_token_mappings: [{ id: 7, provider_id: "coingecko", token_id: TOKEN.id }] } });
-  db.client.rpc = async (name) => name === "get_coingecko_intraday_gaps" ? { data: [gap], error: null } : timeout;
+  db.client.rpc = async (name) => name === "get_coingecko_midnight_gaps" ? { data: [gap], error: null } : timeout;
   const result = await repairCoinGeckoDailyGaps(db.client, { now: () => NOW, fetchImpl: async () => Response.json(hourlyChart()), sleep: noSleep, env: ENV });
   assert.equal(result.affectedTokens, 1);
   assert.equal(db.rows("token_metric_observations").length, 3, "the midnight point is still written");
