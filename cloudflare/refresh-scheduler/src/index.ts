@@ -363,19 +363,15 @@ async function run(env: Env): Promise<RouteResult[]> {
     console.error(
       `refresh-scheduler: skipping /api/cron/geckoterminal this tick because /api/cron/refresh did not return 2xx `
       + `(status ${refreshResult.status}${refreshResult.error ? `, error: ${refreshResult.error}` : ""}); `
-      + "retention will still be attempted independently.",
+      + "it will be retried on the next tick.",
     );
   }
 
-  // Retention is independent of refresh success. If a scheduled retention window is due,
-  // this call must be attempted even when /api/cron/refresh failed. A failed retention
-  // attempt leaves the last successful retention timestamp unchanged, so the same
-  // scheduled window remains due and is retried on the next 5-minute Worker tick.
-  const retentionResult = await callRoute(env.REFRESH_URL, "/api/cron/retention", env.CRON_SECRET);
-  if (retentionResult.error) console.error(`refresh-scheduler: /api/cron/retention request failed: ${retentionResult.error}`);
-  else console.log(`refresh-scheduler: /api/cron/retention -> ${retentionResult.status} ${retentionResult.body.slice(0, 500)}`);
+  // Retention no longer runs from here: its three batch functions and the vacuum manager are
+  // scheduled inside Postgres with pg_cron (see supabase/migrations/20261029140000_retention_pg_cron.sql),
+  // so it costs no Vercel function invocation. /api/cron/retention remains for manual `?force=1` runs.
 
-  return [refreshResult, ...(geckoTerminalResult ? [geckoTerminalResult] : []), retentionResult];
+  return [refreshResult, ...(geckoTerminalResult ? [geckoTerminalResult] : [])];
 }
 
 export default {

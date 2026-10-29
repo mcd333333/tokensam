@@ -29,6 +29,8 @@ const OTHER_METRICS = ["market_cap_usd", "volume_24h_usd"];
 // outage. price_usd and volume_24h_usd are the only metrics retained continuously
 // granular, so they're the only ones an intraday gap check is meaningful for.
 const INTRADAY_METRICS = [PRICE_METRIC, "volume_24h_usd"];
+// A price/volume outage is an outage of every CoinGecko series (one request feeds all three), so the
+// midnight repair also fills market_cap_usd, which the indicators read at midnight as well.
 
 type Gap = { token_id: string; metric_id: string; missing_date: string };
 type IntradayGap = { token_id: string; metric_id: string; gap_start: string; gap_end: string };
@@ -40,10 +42,27 @@ function utcDateDaysAgo(days: number, now: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function withinIntradayGap(metricId: string, observedAtMs: number, intradayGaps: IntradayGap[]): boolean {
-  return intradayGaps.some((gap) => gap.metric_id === metricId
-    && observedAtMs > Date.parse(gap.gap_start)
-    && observedAtMs < Date.parse(gap.gap_end));
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Matches the indicator pipeline's own tolerance (SERIES_RULES in src/lib/indicators/series.ts):
+// a daily sample counts for a UTC midnight only when it is within 30 minutes of it.
+const MIDNIGHT_TOLERANCE_MS = 30 * 60 * 1000;
+
+/**
+ * UTC midnights a gap swallows entirely: no stored observation lies within the indicator
+ * tolerance of them. A gap whose edges are themselves midnight samples (the one-point-per-day
+ * shape retention collapses old data into) contains none, which is what stops the audit from
+ * flagging every collapsed day as an outage, and a repaired gap stops being flagged once its
+ * midnight point exists.
+ */
+export function gapMidnights(gap: { gap_start: string; gap_end: string }): number[] {
+  const start = Date.parse(gap.gap_start);
+  const end = Date.parse(gap.gap_end);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+  const midnights: number[] = [];
+  for (let midnight = Math.ceil(start / DAY_MS) * DAY_MS; midnight < end; midnight += DAY_MS) {
+    if (midnight - start > MIDNIGHT_TOLERANCE_MS && end - midnight > MIDNIGHT_TOLERANCE_MS) midnights.push(midnight);
+  }
+  return midnights;
 }
 
 function toObservationRows(
@@ -61,14 +80,27 @@ function toObservationRows(
     collectedAt,
     notAfter: {},
     existing: new Set(),
+    granularDays: PRICE_GAP_DAYS,
   });
   if (!snapshot) return [];
+  // One point per metric per swallowed midnight -- the nearest provider timestamp within tolerance --
+  // not every hourly point of the outage: the indicators only ever read midnight samples, and
+  // retention would collapse the rest to one point per day again (insert/delete churn).
+  const midnights = [...new Set(intradayGaps.flatMap(gapMidnights))];
+  const midnightRows = new Set<(typeof snapshot.observations)[number]>();
+  for (const metricId of new Set(snapshot.observations.map((row) => row.metricId))) {
+    const candidates = snapshot.observations.filter((row) => row.metricId === metricId);
+    for (const midnight of midnights) {
+      let best: (typeof candidates)[number] | null = null;
+      for (const row of candidates) {
+        const distance = Math.abs(Date.parse(row.observedAt) - midnight);
+        if (distance <= MIDNIGHT_TOLERANCE_MS && (!best || distance < Math.abs(Date.parse(best.observedAt) - midnight))) best = row;
+      }
+      if (best) midnightRows.add(best);
+    }
+  }
   return snapshot.observations
-    .filter((row) => {
-      const day = row.observedAt.slice(0, 10);
-      if (missing.has(`${row.metricId}|${day}`)) return true;
-      return withinIntradayGap(row.metricId, Date.parse(row.observedAt), intradayGaps);
-    })
+    .filter((row) => missing.has(`${row.metricId}|${row.observedAt.slice(0, 10)}`) || midnightRows.has(row))
     .map((row) => ({
       token_id: row.tokenId,
       chain_id: row.chainId,
@@ -136,7 +168,7 @@ export async function repairCoinGeckoDailyGaps(
   if (intradayGapsResult.error) throw new Error(`Supabase CoinGecko intraday gap audit failed: ${intradayGapsResult.error.message}`);
 
   const allGaps = [...(priceGapsResult.data ?? []), ...(otherGapsResult.data ?? [])] as Gap[];
-  const allIntradayGaps = (intradayGapsResult.data ?? []) as IntradayGap[];
+  const allIntradayGaps = ((intradayGapsResult.data ?? []) as IntradayGap[]).filter((gap) => gapMidnights(gap).length > 0);
   const tokenIds = [...new Set([
     ...allGaps.map((gap) => gap.token_id),
     ...allIntradayGaps.map((gap) => gap.token_id),

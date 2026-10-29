@@ -224,6 +224,13 @@ export function createFakeSupabase({ seed = {}, views = true, missingTables = []
     latest_observations_bounded: latestObservationsBounded,
     metrics_series_recent_points: metricsSeriesRecentPoints,
     record_quota_usage: () => null,
+    touch_calculated_metric_observations: ({ p_ids, p_calculated_at }) => {
+      let touched = 0;
+      for (const row of rowsOf("calculated_metric_observations")) {
+        if (p_ids.includes(row.id)) { row.calculated_at = p_calculated_at; touched += 1; }
+      }
+      return touched;
+    },
   };
 
   function rpc(name, params = {}) {

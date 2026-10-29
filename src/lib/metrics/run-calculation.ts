@@ -1,4 +1,4 @@
-import { CALCULATED_METRICS, calculateAllMetrics, type ObservationInput, type RawRecordInput, type TokenInput } from "./engine.ts";
+import { CALCULATED_METRICS, calculateAllMetrics, type CalculatedMetricRow, type ObservationInput, type RawRecordInput, type TokenInput } from "./engine.ts";
 import { LATEST_READ_WINDOW_MS, PROVIDERS, mergeById, readLatestRawRecords, readPages } from "../data/observation-reads.ts";
 import { recordApproxRead } from "../monitoring/quota-tracker.ts";
 
@@ -90,6 +90,44 @@ async function readObservations(client: SupabaseAdminClient, tokenIds: string[],
   return mergeById(latest, history).sort((a, b) => Date.parse(a.observed_at) - Date.parse(b.observed_at) || a.id - b.id);
 }
 
+type ExistingCalculatedRow = { id: number; token_id: string; chain_id: string; metric_id: string; input_fingerprint: string; calculation_version: string };
+
+const TOUCH_BATCH_SIZE = 1000;
+
+/**
+ * Splits freshly calculated rows into those that differ from what is stored and those that are
+ * identical apart from calculated_at. input_fingerprint hashes every input (source observation ids
+ * and values, raw record ids, result, status, reason, details) plus the calculation version, so an
+ * equal fingerprint and version means the stored row is already correct. A failed read of the
+ * stored fingerprints just treats every row as changed (the previous full-upsert behaviour).
+ */
+async function splitUnchangedRows(client: SupabaseAdminClient, rows: CalculatedMetricRow[]) {
+  const changed: CalculatedMetricRow[] = [];
+  const unchangedIds: number[] = [];
+  const unchangedRows: CalculatedMetricRow[] = [];
+  let existing: Map<string, ExistingCalculatedRow> | null = null;
+  try {
+    const { rows: stored, missing } = await readPages<ExistingCalculatedRow>(
+      (from, to) => client.from("calculated_metric_observations")
+        .select("id,token_id,chain_id,metric_id,input_fingerprint,calculation_version").order("id").range(from, to),
+      "read stored calculated metric fingerprints",
+    );
+    if (!missing) existing = new Map(stored.map((row) => [`${row.token_id}|${row.chain_id}|${row.metric_id}`, row]));
+  } catch {
+    existing = null;
+  }
+  for (const row of rows) {
+    const previous = existing?.get(`${row.token_id}|${row.chain_id}|${row.metric_id}`);
+    if (previous && previous.input_fingerprint === row.input_fingerprint && previous.calculation_version === row.calculation_version) {
+      unchangedIds.push(previous.id);
+      unchangedRows.push(row);
+    } else {
+      changed.push(row);
+    }
+  }
+  return { changed, unchangedIds, unchangedRows };
+}
+
 export async function runMetricsCalculation(client: SupabaseAdminClient, now = new Date()) {
   const { data: schemaProbe, error: schemaError } = await client
     .from("calculated_metric_observations")
@@ -114,16 +152,31 @@ export async function runMetricsCalculation(client: SupabaseAdminClient, now = n
 
   const calculatedAt = now.toISOString();
   const rows = calculateAllMetrics(tokens, observations, latestDexRaw, calculatedAt);
+
+  const { changed, unchangedIds, unchangedRows } = await splitUnchangedRows(client, rows);
+  // calculated_at is what the dashboard's "newest run" read keys on (readDashboardCalculated), so
+  // rows whose result did not change must still advance it. A touch sends only ids; rewriting the
+  // whole ~900-byte row (formula, provenance, ...) for every unchanged metric was ~2/3 of each run's
+  // upload, since most unavailable metrics (no DeFiLlama/DEX source) never change between runs.
+  const touchFailed: CalculatedMetricRow[] = [];
+  for (let offset = 0; offset < unchangedIds.length; offset += TOUCH_BATCH_SIZE) {
+    const { error } = await client.rpc("touch_calculated_metric_observations", {
+      p_ids: unchangedIds.slice(offset, offset + TOUCH_BATCH_SIZE),
+      p_calculated_at: calculatedAt,
+    });
+    if (error) touchFailed.push(...unchangedRows.slice(offset, offset + TOUCH_BATCH_SIZE));
+  }
+  const toUpsert = touchFailed.length ? [...changed, ...touchFailed] : changed;
   // onConflict is (token_id,chain_id,metric_id) only — NOT input_fingerprint. Each run
   // recomputes input_fingerprint from that run's inputs, so including it in the conflict
   // target made every run insert a new row instead of updating the existing one for that
   // metric, growing this table unboundedly (218k rows / 374MB within 6 days in production).
   // The unique constraint on the table still includes input_fingerprint for data integrity,
   // but the upsert target intentionally collapses to "one row per token+chain+metric".
-  for (let offset = 0; offset < rows.length; offset += 500) {
+  for (let offset = 0; offset < toUpsert.length; offset += 500) {
     const { error } = await client
       .from("calculated_metric_observations")
-      .upsert(rows.slice(offset, offset + 500), { onConflict: "token_id,chain_id,metric_id" });
+      .upsert(toUpsert.slice(offset, offset + 500), { onConflict: "token_id,chain_id,metric_id" });
     throwOnError(error, "upsert calculated metric observations");
   }
 
@@ -131,6 +184,8 @@ export async function runMetricsCalculation(client: SupabaseAdminClient, now = n
     tokens: tokens.length,
     providerObservationsRead: observations.length,
     latestDexPairRecords: latestDexRaw.length,
+    rewrittenMetrics: toUpsert.length,
+    touchedUnchangedMetrics: unchangedIds.length - touchFailed.length,
     calculatedMetrics: rows.length,
     available: rows.filter((row) => row.status === "available").length,
     unavailable: rows.filter((row) => row.status === "unavailable").length,

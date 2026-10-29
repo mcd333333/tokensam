@@ -481,6 +481,39 @@ test("bounded reads match the pre-migration full scan", async () => {
   assert.ok(withViews.calls.some((call) => call.table === "latest_token_metric_observations"));
 });
 
+test("metrics: unchanged rows are touched by id instead of rewritten, changed rows are upserted", async () => {
+  const rows = [
+    previousObservation(1, BTC.id, BTC.chainId, "coingecko", "price_usd", 60_000, ago(2 * HOUR)),
+    previousObservation(2, BTC.id, BTC.chainId, "coingecko", "price_usd", 61_000, ago(HOUR)),
+    previousObservation(3, BTC.id, BTC.chainId, "coingecko", "market_cap_usd", 1_000_000, ago(HOUR)),
+    previousObservation(4, BTC.id, BTC.chainId, "coingecko", "volume_24h_usd", 40_000, ago(HOUR)),
+  ];
+  const db = createFakeSupabase({ seed: baseSeed({ token_metric_observations: rows }) });
+  const upserts = () => db.calls.filter((call) => call.table === "calculated_metric_observations" && call.op === "upsert").length;
+  const touches = () => db.calls.filter((call) => call.table === "touch_calculated_metric_observations").length;
+
+  const first = await runMetricsCalculation(db.client, NOW);
+  assert.ok(first.calculatedMetrics > 0);
+  assert.equal(first.touchedUnchangedMetrics, 0, "the first run has nothing stored to compare against");
+  const upsertsAfterFirst = upserts();
+  const snapshot = (table) => JSON.stringify(db.rows(table).map(({ calculated_at, ...rest }) => rest));
+  const storedBefore = snapshot("calculated_metric_observations");
+
+  const later = new Date(NOW.getTime() + 15 * 60 * 1000);
+  const second = await runMetricsCalculation(db.client, later);
+  assert.equal(second.rewrittenMetrics, 0, "identical inputs rewrite nothing");
+  assert.equal(second.touchedUnchangedMetrics, second.calculatedMetrics);
+  assert.equal(upserts(), upsertsAfterFirst, "no upsert is sent when every row is unchanged");
+  assert.ok(touches() > 0);
+  assert.equal(snapshot("calculated_metric_observations"), storedBefore, "stored results are untouched");
+  assert.ok(db.rows("calculated_metric_observations").every((row) => row.calculated_at === later.toISOString()), "calculated_at still advances on every row");
+
+  db.rows("token_metric_observations").push(previousObservation(5, BTC.id, BTC.chainId, "coingecko", "price_usd", 62_000, ago(1000)));
+  const third = await runMetricsCalculation(db.client, new Date(later.getTime() + 15 * 60 * 1000));
+  assert.ok(third.rewrittenMetrics > 0 && third.rewrittenMetrics < third.calculatedMetrics, "only rows fed by the new price are rewritten");
+  assert.equal(third.rewrittenMetrics + third.touchedUnchangedMetrics, third.calculatedMetrics);
+});
+
 test("deadline sleep stops waiting once the step budget is spent", async () => {
   const controller = new AbortController();
   const sleep = deadlineSleep(controller.signal, () => new Promise(() => {}));
