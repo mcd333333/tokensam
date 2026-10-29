@@ -88,6 +88,25 @@ test("repair does nothing when no gap swallows a midnight", async () => {
   assert.equal(db.rows("token_metric_observations").length, 0);
 });
 
+test("midnightOnly writes one point for a whole missing day; normal mode keeps its hourly points", async () => {
+  async function run(midnightOnly) {
+    const db = createFakeSupabase({ seed: { provider_token_mappings: [{ id: 7, provider_id: "coingecko", token_id: TOKEN.id }] } });
+    db.client.rpc = async (name, params) => ({
+      data: name === "get_coingecko_daily_gaps" && params.p_metric_ids.includes("price_usd")
+        ? [{ token_id: TOKEN.id, metric_id: "price_usd", missing_date: "2026-10-20" }]
+        : [],
+      error: null,
+    });
+    await repairCoinGeckoDailyGaps(db.client, { now: () => NOW, fetchImpl: async () => Response.json(hourlyChart()), sleep: noSleep, env: ENV, midnightOnly });
+    return db.rows("token_metric_observations");
+  }
+  const normal = await run(false);
+  assert.equal(normal.length, 24, "all 24 hourly points of the missing day");
+  const reduced = await run(true);
+  assert.equal(reduced.length, 1);
+  assert.ok(Math.abs(Date.parse(reduced[0].observed_at) - Date.parse("2026-10-20T00:00:00Z")) <= 30 * 60 * 1000, "the kept point is the one nearest midnight");
+});
+
 assert.ok(coingeckoTokenIds[TOKEN.id], "the test token has a CoinGecko id");
 
 let failures = 0;

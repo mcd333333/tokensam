@@ -73,6 +73,7 @@ function toObservationRows(
   intradayGaps: IntradayGap[],
   payload: Awaited<ReturnType<typeof fetchMarketChart>>,
   collectedAt: string,
+  midnightOnly: boolean,
 ) {
   const snapshot = normalizeMarketChartHistory({
     asset: { tokenId, chainId, externalAssetId },
@@ -99,8 +100,21 @@ function toObservationRows(
       if (best) midnightRows.add(best);
     }
   }
+  // midnightOnly: a whole missing UTC day is also repaired with just its point nearest to midnight
+  // (what the indicators and retention's daily collapse both keep), not all of its hourly points.
+  const missingDayKeeper = new Map<string, (typeof snapshot.observations)[number]>();
+  if (midnightOnly) {
+    for (const row of snapshot.observations) {
+      const key = `${row.metricId}|${row.observedAt.slice(0, 10)}`;
+      if (!missing.has(key)) continue;
+      const dayStart = Date.parse(`${row.observedAt.slice(0, 10)}T00:00:00Z`);
+      const kept = missingDayKeeper.get(key);
+      if (!kept || Math.abs(Date.parse(row.observedAt) - dayStart) < Math.abs(Date.parse(kept.observedAt) - dayStart)) missingDayKeeper.set(key, row);
+    }
+  }
+  const keptMissingRows = new Set(missingDayKeeper.values());
   return snapshot.observations
-    .filter((row) => missing.has(`${row.metricId}|${row.observedAt.slice(0, 10)}`) || midnightRows.has(row))
+    .filter((row) => (missing.has(`${row.metricId}|${row.observedAt.slice(0, 10)}`) && (!midnightOnly || keptMissingRows.has(row))) || midnightRows.has(row))
     .map((row) => ({
       token_id: row.tokenId,
       chain_id: row.chainId,
@@ -134,6 +148,8 @@ export async function repairCoinGeckoDailyGaps(
     fetchImpl?: typeof fetch;
     sleep?: (ms: number) => Promise<void>;
     env?: Record<string, string | undefined>;
+    /** Write at most one point per metric per day (used while the quota throttle is critical). */
+    midnightOnly?: boolean;
   } = {},
 ) {
   const now = options.now ?? (() => new Date());
@@ -204,7 +220,7 @@ export async function repairCoinGeckoDailyGaps(
         .map((gap) => `${gap.metric_id}|${gap.missing_date}`),
     );
     const intradayGaps = allIntradayGaps.filter((gap) => gap.token_id === tokenId);
-    const rows = toObservationRows(token.id, token.chainId, externalAssetId, missing, intradayGaps, payload, now().toISOString());
+    const rows = toObservationRows(token.id, token.chainId, externalAssetId, missing, intradayGaps, payload, now().toISOString(), options.midnightOnly ?? false);
     if (rows.length === 0) continue;
 
     const { data: mapping } = await client.from("provider_token_mappings")

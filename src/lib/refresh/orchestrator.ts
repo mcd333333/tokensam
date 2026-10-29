@@ -39,13 +39,12 @@ export const defaultCollectors: Record<ProviderStep, CollectorDefinition> = {
   coingecko: {
     collect: async (client, options) => {
       const collected = await runCoinGeckoCollection(client, options);
-      // Gap repair is optional recovery work, not the live refresh itself: at
-      // "critical" quota throttle (see quota-tracker.ts) it is skipped so a project
-      // already near a Supabase free-plan limit is not pushed further over it by its
-      // own self-healing. The live price/market-data collection above always runs.
-      if (await getThrottleLevel(client) === "critical") {
-        return { ...collected, gapRepairSkipped: "quota throttle: critical" };
-      }
+      // At "critical" quota throttle (see quota-tracker.ts) the CoinGecko gap repair does not stop: it
+      // runs midnight-only, writing at most one point per metric per day (about 3 rows per affected
+      // token, well under 1 MB in total). Skipping it entirely left real outages unrepaired for days,
+      // and the technical indicators need an unbroken run of midnight samples. The CoinGecko requests
+      // it makes do not count against Supabase egress. Other repairs below stay gated.
+      const midnightOnly = (await getThrottleLevel(client)) === "critical";
       // Historical repair is deliberately best-effort: a repair failure must not turn an
       // otherwise successful live refresh into a provider failure. The next successful
       // CoinGecko refresh will retry the bounded repair.
@@ -53,8 +52,9 @@ export const defaultCollectors: Record<ProviderStep, CollectorDefinition> = {
         const repaired = await repairCoinGeckoDailyGaps(client, {
           fetchImpl: options.fetchImpl,
           sleep: options.sleep,
+          midnightOnly,
         });
-        return { ...collected, gapRepair: repaired };
+        return { ...collected, gapRepair: repaired, ...(midnightOnly ? { gapRepairMode: "midnight-only (quota throttle: critical)" } : {}) };
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown CoinGecko gap-repair error.";
         return { ...collected, gapRepairError: message };
