@@ -159,38 +159,50 @@ export async function repairCoinGeckoDailyGaps(
   const endDate = utcDateDaysAgo(1, now());
 
   // Sequential on purpose: each audit takes 2-4s on its own, and run concurrently they
-  // contend and exceed the API role's 8s statement_timeout, failing the whole repair.
-  const priceGapsResult = await client.rpc("get_coingecko_daily_gaps", {
-    p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
-    p_end_date: endDate,
-    p_metric_ids: [PRICE_METRIC],
-  });
-  const otherGapsResult = await client.rpc("get_coingecko_daily_gaps", {
-    p_start_date: utcDateDaysAgo(COINGECKO_GAP_DAYS, now()),
-    p_end_date: endDate,
-    p_metric_ids: OTHER_METRICS,
-  });
+  // contend and exceed the API role's 8s statement_timeout.
+  //
+  // Each audit is also independent. The intraday audit (gaps that swallow a UTC midnight) is the one
+  // that keeps the technical indicators' unbroken run of daily samples intact, so it runs first, and a
+  // statement timeout in either whole-day audit no longer aborts the repair: that audit is skipped for
+  // this tick and retried on the next one. The repair only fails outright when every audit fails.
+  const auditErrors: string[] = [];
+  const audit = async <T,>(label: string, call: () => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> => {
+    const result = await call();
+    if (result.error) {
+      auditErrors.push(`${label}: ${result.error.message}`);
+      return [];
+    }
+    return result.data ?? [];
+  };
   // Covers through "today" (not just completed days): an intraday gap can still be
-  // closing out right now, unlike the whole-day checks above which only look at
+  // closing out right now, unlike the whole-day checks below which only look at
   // fully completed UTC days.
-  const intradayGapsResult = await client.rpc("get_coingecko_intraday_gaps", {
+  const intradayRows = await audit<IntradayGap>("intraday gap audit", () => client.rpc("get_coingecko_intraday_gaps", {
     p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
     p_end_date: utcDateDaysAgo(0, now()),
     p_min_gap_hours: INTRADAY_GAP_HOURS,
     p_metric_ids: INTRADAY_METRICS,
-  });
-  if (priceGapsResult.error) throw new Error(`Supabase CoinGecko price_usd daily gap audit failed: ${priceGapsResult.error.message}`);
-  if (otherGapsResult.error) throw new Error(`Supabase CoinGecko daily gap audit failed: ${otherGapsResult.error.message}`);
-  if (intradayGapsResult.error) throw new Error(`Supabase CoinGecko intraday gap audit failed: ${intradayGapsResult.error.message}`);
+  }));
+  const priceGaps = await audit<Gap>("price_usd daily gap audit", () => client.rpc("get_coingecko_daily_gaps", {
+    p_start_date: utcDateDaysAgo(PRICE_GAP_DAYS, now()),
+    p_end_date: endDate,
+    p_metric_ids: [PRICE_METRIC],
+  }));
+  const otherGaps = await audit<Gap>("market cap / volume daily gap audit", () => client.rpc("get_coingecko_daily_gaps", {
+    p_start_date: utcDateDaysAgo(COINGECKO_GAP_DAYS, now()),
+    p_end_date: endDate,
+    p_metric_ids: OTHER_METRICS,
+  }));
+  if (auditErrors.length === 3) throw new Error(`Supabase CoinGecko gap audits all failed: ${auditErrors.join("; ")}`);
 
-  const allGaps = [...(priceGapsResult.data ?? []), ...(otherGapsResult.data ?? [])] as Gap[];
-  const allIntradayGaps = ((intradayGapsResult.data ?? []) as IntradayGap[]).filter((gap) => gapMidnights(gap).length > 0);
+  const allGaps = [...priceGaps, ...otherGaps];
+  const allIntradayGaps = intradayRows.filter((gap) => gapMidnights(gap).length > 0);
   const tokenIds = [...new Set([
     ...allGaps.map((gap) => gap.token_id),
     ...allIntradayGaps.map((gap) => gap.token_id),
   ])].slice(0, MAX_GAP_REPAIR_TOKENS);
   if (tokenIds.length === 0) {
-    return { checkedDays: PRICE_GAP_DAYS, affectedTokens: 0, requests: 0, observations: 0, remainingTokens: 0 };
+    return { checkedDays: PRICE_GAP_DAYS, affectedTokens: 0, requests: 0, observations: 0, remainingTokens: 0, ...(auditErrors.length ? { auditErrors } : {}) };
   }
 
   const sleepBetweenRequests = async () => {
@@ -247,5 +259,6 @@ export async function repairCoinGeckoDailyGaps(
     requests,
     observations,
     remainingTokens: Math.max(0, allAffectedTokens.size - tokenIds.length),
+    ...(auditErrors.length ? { auditErrors } : {}),
   };
 }

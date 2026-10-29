@@ -57,7 +57,7 @@ test("repair writes only the swallowed midnight, for every CoinGecko series, and
 
   const result = await repairCoinGeckoDailyGaps(db.client, { now: () => NOW, fetchImpl, sleep: noSleep, env: ENV });
 
-  assert.deepEqual(rpcCalls, ["get_coingecko_daily_gaps", "get_coingecko_daily_gaps", "get_coingecko_intraday_gaps"], "audits run one at a time");
+  assert.deepEqual(rpcCalls, ["get_coingecko_intraday_gaps", "get_coingecko_daily_gaps", "get_coingecko_daily_gaps"], "audits run one at a time, intraday (midnight gaps) first");
   assert.equal(result.affectedTokens, 1, "the collapsed-day-only token is not an outage");
   assert.equal(result.remainingTokens, 0);
   assert.equal(requested.length, 1);
@@ -105,6 +105,25 @@ test("midnightOnly writes one point for a whole missing day; normal mode keeps i
   const reduced = await run(true);
   assert.equal(reduced.length, 1);
   assert.ok(Math.abs(Date.parse(reduced[0].observed_at) - Date.parse("2026-10-20T00:00:00Z")) <= 30 * 60 * 1000, "the kept point is the one nearest midnight");
+});
+
+test("a timed-out daily audit does not stop the intraday midnight repair, and total failure still throws", async () => {
+  const gap = { token_id: TOKEN.id, metric_id: "price_usd", gap_start: "2026-10-22T12:04:48Z", gap_end: "2026-10-23T11:49:52Z" };
+  const timeout = { data: null, error: { message: "canceling statement due to statement timeout" } };
+
+  const db = createFakeSupabase({ seed: { provider_token_mappings: [{ id: 7, provider_id: "coingecko", token_id: TOKEN.id }] } });
+  db.client.rpc = async (name) => name === "get_coingecko_intraday_gaps" ? { data: [gap], error: null } : timeout;
+  const result = await repairCoinGeckoDailyGaps(db.client, { now: () => NOW, fetchImpl: async () => Response.json(hourlyChart()), sleep: noSleep, env: ENV });
+  assert.equal(result.affectedTokens, 1);
+  assert.equal(db.rows("token_metric_observations").length, 3, "the midnight point is still written");
+  assert.equal(result.auditErrors.length, 2, "both timed-out audits are reported, not hidden");
+
+  const failing = createFakeSupabase();
+  failing.client.rpc = async () => timeout;
+  await assert.rejects(
+    repairCoinGeckoDailyGaps(failing.client, { now: () => NOW, fetchImpl: async () => Response.json(hourlyChart()), sleep: noSleep, env: ENV }),
+    /gap audits all failed/,
+  );
 });
 
 assert.ok(coingeckoTokenIds[TOKEN.id], "the test token has a CoinGecko id");
