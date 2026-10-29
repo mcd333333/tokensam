@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   CoinGeckoApiError,
   CoinGeckoMarketDataProvider,
   getCoinGeckoConfig,
+  STORED_MARKET_PAYLOAD_FIELDS,
   normalizeCoinGeckoMarketItem,
 } from "../src/lib/providers/coingecko.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
@@ -111,6 +113,30 @@ test("429 responses honor Retry-After and stop after the bounded retry count", a
   await assert.rejects(provider.fetchSnapshots([asset]), CoinGeckoApiError);
   assert.equal(requestCount, 3);
   assert.deepEqual(delays, [0, 0]);
+});
+
+test("the stored market payload keeps only the fields the site reads, and observations are unaffected", () => {
+  const item = {
+    id: "bitcoin", symbol: "btc", name: "Bitcoin", image: "https://assets.example/btc.png", current_price: 100, market_cap: 2_000, total_volume: 300,
+    fully_diluted_valuation: 2_100, market_cap_rank: 1, ath: 999, sparkline_in_7d: { price: [1, 2, 3] }, last_updated: "2026-10-29T10:00:00.000Z",
+    price_change_percentage_24h: 1.5, price_change_percentage_7d_in_currency: 2.5, circulating_supply: 10, total_supply: 11, max_supply: 21,
+  };
+  const snapshot = normalizeCoinGeckoMarketItem(asset, item, "2026-10-29T10:01:00.000Z");
+  assert.deepEqual(Object.keys(snapshot.rawPayload).sort(), [...STORED_MARKET_PAYLOAD_FIELDS].sort());
+  assert.equal(snapshot.rawPayload.image, item.image);
+  assert.equal(snapshot.rawPayload.fully_diluted_valuation, 2_100);
+  assert.equal(snapshot.rawPayload.current_price, 100);
+  assert.equal(snapshot.observations.length, 8, "every metric is still stored as its own observation");
+  assert.equal(snapshot.observations.find((row) => row.metricId === "market_cap_usd").value, 2_000);
+  // A missing optional field stays an explicit null, which the SQL readers (payload->>x) treat as null.
+  assert.equal(normalizeCoinGeckoMarketItem(asset, { id: "x" }).rawPayload.fully_diluted_valuation, null);
+});
+
+test("live-data only reads stored CoinGecko payload fields that the trimmed payload keeps", () => {
+  const source = readFileSync(new URL("../src/lib/data/live-data.ts", import.meta.url), "utf8");
+  const read = [...source.matchAll(/payload->>?([a-z_]+)/g)].map((match) => match[1]);
+  assert.ok(read.length >= 4, "found the logo and FDV payload reads");
+  for (const field of read) assert.ok(STORED_MARKET_PAYLOAD_FIELDS.includes(field), `live-data reads payload field "${field}", which the trimmed payload would drop`);
 });
 
 let failures = 0;

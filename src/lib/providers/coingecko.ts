@@ -217,6 +217,20 @@ function numericObservation(
   };
 }
 
+/**
+ * What is stored in raw_provider_records.payload for a /coins/markets item. The full item is ~1 KB
+ * compressed and, kept for two days, was ~31 MB of the 500 MB database. The only readers of a stored
+ * CoinGecko payload are token logos (id, image) and reported FDV (id, fully_diluted_valuation,
+ * current_price) in src/lib/data/live-data.ts; every metric is stored as its own observation.
+ * symbol and last_updated stay as cheap identity/debug context.
+ */
+export const STORED_MARKET_PAYLOAD_FIELDS = ["id", "symbol", "image", "current_price", "fully_diluted_valuation", "last_updated"] as const;
+
+export function storedMarketPayload(item: CoinGeckoMarketItem): Record<string, unknown> {
+  const source = item as Record<string, unknown>;
+  return Object.fromEntries(STORED_MARKET_PAYLOAD_FIELDS.map((field) => [field, source[field] ?? null]));
+}
+
 export function normalizeCoinGeckoMarketItem(
   asset: ProviderAsset,
   item: CoinGeckoMarketItem,
@@ -257,7 +271,7 @@ export function normalizeCoinGeckoMarketItem(
     asset,
     observedAt,
     collectedAt,
-    rawPayload: item,
+    rawPayload: storedMarketPayload(item),
     observations,
   };
 }
