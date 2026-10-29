@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && wrangler deploy",
     "test": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/coingecko.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/binance.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/defillama.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/dexscreener.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/geckoterminal.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/geckoterminal-scheduling.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/onchain-concentration.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/universe.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/price-flash.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/live-prices.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/observation-reads.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/live-data.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/refresh.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/persist-snapshots.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/coingecko-collection.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/coingecko-gap-repair.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/analysis.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/profile-payload.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/correction-pass.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/ai-diagnostics.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/ai-router.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/mistral-provider.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/grounding-contract.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/deep-analysis-panel.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/provider-benchmark.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/history.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/evidence-contract.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/token-centric.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/universe-expansion.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/ui-presentation.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/movers.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/technical-indicators.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/market-overview.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/risk-profile.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/phase16-token-profile.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/phase16-dashboard-scale.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/deep-analysis-engine.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/deep-analysis-footnotes.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/synthesis.test.mjs && node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/observation-storage.test.mjs",
     "coingecko:sync": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-coingecko.mjs",
     "defillama:sync": "node --conditions=react-server --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/sync-defillama.mjs",
@@ -29,6 +32,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.13",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -36,7 +40,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.154.0"
   },
   "packageManager": "pnpm@11.19.0"
 }

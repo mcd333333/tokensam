@@ -44,3 +44,8 @@ next-env.d.ts
 # Local package-manager caches
 /.pnpm-cache/
 /.pnpm-store/
+
+# cloudflare / opennext build output
+/.open-next/
+/.wrangler/
+.dev.vars
