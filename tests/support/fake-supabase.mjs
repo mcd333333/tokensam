@@ -223,6 +223,13 @@ export function createFakeSupabase({ seed = {}, views = true, missingTables = []
   const RPCS = {
     latest_observations_bounded: latestObservationsBounded,
     metrics_series_recent_points: metricsSeriesRecentPoints,
+    // Slim variants used by run-calculation: same rows, fewer columns, latest read limited to the given pairs.
+    metrics_series_inputs: (params) => metricsSeriesRecentPoints(params),
+    metrics_latest_inputs: ({ p_token_ids, p_providers, p_metrics, p_since }) => {
+      const pairs = new Set(p_providers.map((provider, index) => `${provider}|${p_metrics[index]}`));
+      return latestObservationsBounded({ p_token_ids, p_provider_ids: [...new Set(p_providers)], p_since })
+        .filter((row) => pairs.has(`${row.provider_id}|${row.metric_id}`));
+    },
     record_quota_usage: () => null,
     touch_calculated_metric_observations: ({ p_ids, p_calculated_at }) => {
       let touched = 0;

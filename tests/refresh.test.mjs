@@ -514,6 +514,39 @@ test("metrics: unchanged rows are touched by id instead of rewritten, changed ro
   assert.equal(third.rewrittenMetrics + third.touchedUnchangedMetrics, third.calculatedMetrics);
 });
 
+test("metrics: reading only LATEST_INPUTS leaves every calculated row unchanged", async () => {
+  const pairs = [];
+  for (const provider of ["coingecko", "defillama", "defillama_coins", "dexscreener", "geckoterminal", "binance"]) {
+    for (const metric of ["price_usd", "market_cap_usd", "volume_24h_usd", "tvl_usd", "revenue_24h_usd", "fees_24h_usd", "sells_24h_count",
+      "buys_24h_count", "transactions_24h_count", "liquidity_usd", "fdv_usd", "price_change_24h_pct", "price_change_7d_pct",
+      "circulating_supply", "total_supply", "maximum_supply"]) pairs.push([provider, metric]);
+  }
+  const rows = pairs.flatMap(([provider, metric], index) => [
+    previousObservation(index * 2 + 1, BTC.id, BTC.chainId, provider, metric, 1_000 + index, ago(26 * HOUR)),
+    previousObservation(index * 2 + 2, BTC.id, BTC.chainId, provider, metric, 2_000 + index, ago(HOUR)),
+  ]);
+  const seed = () => createFakeSupabase({ seed: baseSeed({ token_metric_observations: rows }) });
+  const filtered = seed();
+  await runMetricsCalculation(filtered.client, NOW);
+
+  // Same run, but the "latest" read returns every provider and metric (the pre-slimming behaviour).
+  const unfiltered = seed();
+  const slim = unfiltered.client.rpc;
+  unfiltered.client.rpc = (name, params) => name === "metrics_latest_inputs"
+    ? slim("metrics_latest_inputs", {
+      ...params,
+      p_providers: pairs.map(([provider]) => provider),
+      p_metrics: pairs.map(([, metric]) => metric),
+    })
+    : slim(name, params);
+  await runMetricsCalculation(unfiltered.client, NOW);
+
+  const project = (db) => db.rows("calculated_metric_observations")
+    .map(({ id, calculated_at, ...rest }) => JSON.stringify(rest)).sort();
+  assert.ok(project(filtered).length > 0);
+  assert.deepEqual(project(filtered), project(unfiltered), "no metric depends on a (provider, metric) pair outside LATEST_INPUTS");
+});
+
 test("deadline sleep stops waiting once the step budget is spent", async () => {
   const controller = new AbortController();
   const sleep = deadlineSleep(controller.signal, () => new Promise(() => {}));

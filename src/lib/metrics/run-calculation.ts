@@ -1,5 +1,5 @@
 import { CALCULATED_METRICS, calculateAllMetrics, type CalculatedMetricRow, type ObservationInput, type RawRecordInput, type TokenInput } from "./engine.ts";
-import { LATEST_READ_WINDOW_MS, PROVIDERS, mergeById, readLatestRawRecords, readPages } from "../data/observation-reads.ts";
+import { LATEST_READ_WINDOW_MS, mergeById, readLatestRawRecords, readPages } from "../data/observation-reads.ts";
 import { recordApproxRead } from "../monitoring/quota-tracker.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
@@ -16,6 +16,28 @@ export const SERIES_INPUTS = [
   { providerId: "defillama", metricId: "revenue_24h_usd" },
   { providerId: "defillama", metricId: "fees_24h_usd" },
 ];
+/**
+ * Every (provider, metric) pair the engine reads as a latest value (engine.ts: chooseLatest/series).
+ * Reading only these, instead of the latest row for every provider and metric, cut the per-run
+ * download by about two thirds: the rest (CoinGecko supply and change percentages, DEX Screener
+ * price/market cap/change/transactions, DeFiLlama Coins prices) is never consumed by the engine,
+ * and several of those rows carry ~400-character notes. tests/refresh.test.mjs asserts that
+ * filtering to this list leaves the engine's output unchanged.
+ */
+export const LATEST_INPUTS = [
+  { providerId: "coingecko", metricId: "price_usd" },
+  { providerId: "coingecko", metricId: "market_cap_usd" },
+  { providerId: "coingecko", metricId: "volume_24h_usd" },
+  { providerId: "defillama", metricId: "tvl_usd" },
+  { providerId: "defillama", metricId: "revenue_24h_usd" },
+  { providerId: "defillama", metricId: "fees_24h_usd" },
+  { providerId: "dexscreener", metricId: "volume_24h_usd" },
+  { providerId: "dexscreener", metricId: "sells_24h_count" },
+  { providerId: "dexscreener", metricId: "buys_24h_count" },
+  { providerId: "dexscreener", metricId: "liquidity_usd" },
+  { providerId: "dexscreener", metricId: "fdv_usd" },
+];
+
 /**
  * The engine never actually looks back this far: growthCalculation (engine.ts) only
  * ever compares the two most recent distinct observations, and the cross-provider
@@ -72,10 +94,13 @@ async function readTokens(client: SupabaseAdminClient): Promise<TokenInput[]> {
 async function readObservations(client: SupabaseAdminClient, tokenIds: string[], now: Date): Promise<ObservationInput[]> {
   const since = new Date(now.getTime() - LATEST_READ_WINDOW_MS).toISOString();
   const [{ rows: latest }, { rows: history }] = await Promise.all([
-    readPages<ObservationInput>((from, to) => client.rpc("latest_observations_bounded", {
-      p_token_ids: tokenIds, p_provider_ids: PROVIDERS, p_since: since,
-    }).range(from, to), "read latest observations (bounded rpc)"),
-    readPages<ObservationInput>((from, to) => client.rpc("metrics_series_recent_points", {
+    readPages<ObservationInput>((from, to) => client.rpc("metrics_latest_inputs", {
+      p_token_ids: tokenIds,
+      p_providers: LATEST_INPUTS.map((input) => input.providerId),
+      p_metrics: LATEST_INPUTS.map((input) => input.metricId),
+      p_since: since,
+    }).range(from, to), "read latest metric inputs (rpc)"),
+    readPages<ObservationInput>((from, to) => client.rpc("metrics_series_inputs", {
       p_token_ids: tokenIds,
       p_providers: SERIES_INPUTS.map((series) => series.providerId),
       p_metrics: SERIES_INPUTS.map((series) => series.metricId),
@@ -83,7 +108,7 @@ async function readObservations(client: SupabaseAdminClient, tokenIds: string[],
       p_horizon_hours: 24,
       p_tolerance_hours: 6,
       p_max_lookback_days: SERIES_LOOKBACK_DAYS,
-    }).range(from, to), "read metrics series recent points (rpc)"),
+    }).range(from, to), "read metric series inputs (rpc)"),
   ]);
   recordApproxRead(client, latest);
   recordApproxRead(client, history);
