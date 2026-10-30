@@ -172,13 +172,13 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 
 /* Research Universe */
 /* The illustration carries the brand; restrained type and a balanced card grid keep data readable. */
-.samurai-hero { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 38%); align-items: center; gap: 36px; min-height: 430px; padding: 36px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: #101014; }
+.samurai-hero { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 32%); align-items: center; gap: 36px; min-height: 430px; padding: 36px; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: #101014; }
 .hero-art { position: absolute; z-index: -2; inset: 0; pointer-events: none; user-select: none; }
-.hero-art img { object-fit: cover; object-position: 65% 37%; }
-.hero-veil { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #101014 0%, rgb(16 16 20 / 92%) 25%, rgb(16 16 20 / 45%) 60%, rgb(16 16 20 / 5%) 100%); pointer-events: none; }
-.samurai-hero .hero-copy { position: relative; display: grid; justify-items: start; gap: 18px; max-width: 600px; padding: 0; }
+.hero-art img { object-fit: cover; object-position: 65% 37%; transform: translateX(-12%); mask-image: linear-gradient(90deg, #000 85%, transparent 100%); }
+.hero-veil { position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, #101014 0%, rgb(16 16 20 / 80%) 28%, rgb(16 16 20 / 8%) 48%, rgb(16 16 20 / 10%) 65%, rgb(16 16 20 / 25%) 100%); pointer-events: none; }
+.samurai-hero .hero-copy { position: relative; display: grid; justify-items: start; gap: 18px; max-width: 400px; padding: 0; }
 .hero-eyebrow { margin: 0; font-size: 10px; letter-spacing: .18em; }
-.hero-title { color: var(--ink-strong); font-family: var(--font-sans); font-size: clamp(34px, 3.6vw, 54px); font-weight: 650; letter-spacing: -.055em; line-height: 1.12; text-transform: none; }
+.hero-title { color: var(--ink-strong); font-family: var(--font-sans); font-size: clamp(34px, 3.2vw, 48px); font-weight: 650; letter-spacing: -.055em; line-height: 1.12; text-transform: none; }
 .hero-title span { display: block; }
 .hero-title-accent { color: #ef7466; }
 .samurai-hero .hero-lede { max-width: 32em; color: #b2b0b7; font-size: 14px; line-height: 1.8; }
@@ -186,9 +186,9 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .hero-explore:hover { background: #d55347; }
 .hero-explore svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 .hero-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; width: 100%; max-width: 460px; justify-self: end; }
-.hero-card { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; min-height: 142px; padding: 22px; border: 1px solid rgb(205 172 104 / 25%); border-radius: 10px; background: linear-gradient(135deg, rgb(29 29 33 / 93%), rgb(13 15 19 / 94%)); box-shadow: 0 8px 24px rgb(0 0 0 / 18%), inset 0 1px 0 rgb(255 255 255 / 5%); backdrop-filter: blur(12px); }
+.hero-card { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-width: 0; min-height: 154px; padding: 20px; border: 1px solid rgb(205 172 104 / 38%); border-radius: 10px; background: linear-gradient(135deg, rgb(29 29 33 / 48%), rgb(13 15 19 / 60%)); box-shadow: 0 8px 24px rgb(0 0 0 / 18%), inset 0 1px 0 rgb(255 255 255 / 5%); backdrop-filter: blur(3px); }
 .hero-card-icon { position: absolute; top: 16px; right: 16px; display: grid; place-items: center; color: #c3a677; }
-.hero-card-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.hero-card-icon svg { width: 32px; height: 32px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .hero-card-copy { display: flex; min-width: 0; flex-direction: column; gap: 7px; margin: 0; }
 .hero-card-copy dt, .hero-card-copy dd { margin: 0; }
 .hero-card-value { order: 1; color: var(--ink-strong); font-family: var(--font-sans); font-size: 32px; font-variant-numeric: tabular-nums; font-weight: 550; letter-spacing: -.04em; line-height: 1.2; }
@@ -196,7 +196,9 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .hero-card-kicker { display: flex; align-items: center; gap: 7px; }
 .hero-card-detail { order: 3; color: #9296a1; font-size: 11px; }
 .hero-card-updated .hero-card-value { font-size: 22px; white-space: nowrap; }
-.hero-card-updated .hero-card-icon { display: none; }
+.hero-card-icon .icon-accent { stroke: #ed8270; }
+.hero-card-updated { padding-top: 56px; }
+.hero-card-copy { text-shadow: 0 1px 6px rgb(0 0 0 / 60%); }
 .hero-card-status { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--positive); }
 .hero-card-status.stale { background: #d6a44a; }
 .error-banner { padding: 10px 12px; border: 1px solid rgb(195 50 43 / 45%); border-left: 3px solid var(--crimson); border-radius: var(--radius); background: var(--crimson-soft); color: #e7b4ae; font-size: 13px; }
@@ -666,7 +668,7 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 
 @media (max-width: 420px) {
   .hero-card { gap: 10px; padding: 16px; }
-  .hero-card-icon svg { width: 22px; height: 22px; }
+  .hero-card-icon svg { width: 32px; height: 32px; }
 }
 
 @media (max-width: 340px) {
@@ -766,4 +768,23 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 @media (min-width: 901px) and (max-width: 1250px) {
   .samurai-hero { gap: 24px; padding: 28px; }
   .hero-title { font-size: 36px; }
+}
+
+/* Reserve the center of the banner for the samurai silhouette. On narrower
+   screens the cards move beneath the artwork rather than covering the figure. */
+@media (max-width: 1250px) {
+  .samurai-hero { grid-template-columns: 1fr; }
+  .samurai-hero .hero-copy { min-height: 310px; align-content: center; max-width: 48%; }
+  .hero-art { bottom: auto; height: 380px; }
+  .hero-art img { transform: none; object-position: 65% 35%; mask-image: linear-gradient(#000 75%, transparent 100%); }
+  .hero-stats { max-width: none; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .hero-card { min-height: 150px; }
+  .hero-card-updated .hero-card-value { font-size: 18px; }
+}
+@media (max-width: 720px) {
+  .samurai-hero .hero-copy { max-width: none; min-height: 330px; }
+  .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-art { height: 380px; }
+  .hero-art img { object-position: 62% center; }
+  .hero-card-icon svg { width: 28px; height: 28px; }
 }

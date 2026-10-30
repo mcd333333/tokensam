@@ -18,31 +18,35 @@ function utcDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+// Mon-inspired line art: a treasury coin, linked clan crests, a research scroll,
+// and a Japanese timepiece. Each symbol follows the metric it represents.
 const ICONS: Record<"assets" | "chains" | "metrics" | "updated", ReactNode> = {
   assets: (
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <ellipse cx="24" cy="13" rx="13" ry="5" />
-      <path d="M11 13v7c0 2.8 5.8 5 13 5s13-2.2 13-5v-7M11 20v7c0 2.8 5.8 5 13 5s13-2.2 13-5v-7M11 27v7c0 2.8 5.8 5 13 5s13-2.2 13-5v-7" />
+      <circle cx="24" cy="24" r="17" /><circle cx="24" cy="24" r="13" />
+      <path className="icon-accent" d="M20 20h8v8h-8z" />
+      <path d="M24 11v5M24 32v5M11 24h5M32 24h5M12 12l3 3M33 33l3 3" />
     </svg>
   ),
   chains: (
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <path d="M24 17 13 33M24 17l11 16M17 36h14" />
-      <circle cx="24" cy="12" r="6" />
-      <circle cx="11" cy="36" r="6" />
-      <circle cx="37" cy="36" r="6" />
+      <path d="m20 18-7 13M28 18l7 13M18 37h12" />
+      <circle cx="24" cy="12" r="8" /><circle cx="11" cy="36" r="8" /><circle cx="37" cy="36" r="8" />
+      <path className="icon-accent" d="m24 8 4 4-4 4-4-4ZM11 32l4 4-4 4-4-4ZM37 32l4 4-4 4-4-4Z" />
     </svg>
   ),
   metrics: (
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <path d="M12 8h26v32H12a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4ZM38 8a4 4 0 0 1 4 4v24a4 4 0 0 1-4 4" />
-      <path className="icon-accent" d="M17 32V24M23 32V18M29 32V21M35 32V14" />
+      <path d="M12 8h24v32H12M12 8a3 3 0 1 0-6 0v29a3 3 0 0 0 6 0ZM36 8a3 3 0 1 1 6 0v29a3 3 0 0 1-6 0ZM12 13h24M12 35h24" />
+      <path className="icon-accent" d="M18 29v-6M24 29V18M30 29v-9" />
     </svg>
   ),
   updated: (
     <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
-      <path d="M13 6h22M13 42h22M15 6c0 9 6 12 9 18-3 6-9 9-9 18M33 6c0 9-6 12-9 18 3 6 9 9 9 18" />
-      <path className="icon-accent" d="M19 14h10l-5 7ZM17 39c2-5 5-7 7-7s5 2 7 7Z" />
+      <path d="m24 4 5 5h8l2 8 5 7-5 7-2 8h-8l-5 5-5-5h-8l-2-8-5-7 5-7 2-8h8Z" />
+      <circle cx="24" cy="24" r="12" />
+      <path d="M24 14v2M34 24h-2M24 34v-2M14 24h2" />
+      <path className="icon-accent" d="M24 18v6l5 3" />
     </svg>
   ),
 };
