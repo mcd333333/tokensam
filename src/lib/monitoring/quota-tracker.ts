@@ -20,7 +20,12 @@ export function recordApproxRead(client: SupabaseAdminClient, rows: unknown[]): 
   if (typeof client.rpc !== "function") return;
   const approxBytes = (() => {
     try {
-      return JSON.stringify(rows).length;
+      // Stringifying every row cost ~50 ms per dashboard render for a figure that is only an
+      // approximation anyway, so estimate from an evenly spaced sample of up to 64 rows.
+      if (rows.length <= 64) return JSON.stringify(rows).length;
+      const step = rows.length / 64;
+      const sample = Array.from({ length: 64 }, (_, index) => rows[Math.floor(index * step)]);
+      return Math.round((JSON.stringify(sample).length / 64) * rows.length);
     } catch {
       return 0;
     }

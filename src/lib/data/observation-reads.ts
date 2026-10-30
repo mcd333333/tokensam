@@ -171,12 +171,21 @@ function newestFirst(a: Row, b: Row): number {
 
 /** Keep only the newest row per token/provider/metric (the view's DISTINCT ON rule). */
 export function latestPerMetric<T extends Row>(rows: T[]): T[] {
-  const latest = new Map<string, T>();
-  for (const row of [...rows].sort(newestFirst)) {
+  // One pass keeping the newest row per key, instead of sorting every row with Date.parse in the
+  // comparator: this runs over ~40k rows per dashboard render. Same ordering as newestFirst.
+  const latest = new Map<string, { row: T; observedMs: number; collectedMs: number }>();
+  for (const row of rows) {
     const key = `${row.token_id}|${row.provider_id}|${row.metric_id}`;
-    if (!latest.has(key)) latest.set(key, row);
+    const observedMs = Date.parse(row.observed_at);
+    const collectedMs = Date.parse(row.collected_at);
+    const held = latest.get(key);
+    if (held) {
+      const newer = observedMs - held.observedMs || collectedMs - held.collectedMs || row.id - held.row.id;
+      if (!(newer > 0)) continue;
+    }
+    latest.set(key, { row, observedMs, collectedMs });
   }
-  return [...latest.values()];
+  return [...latest.values()].map((entry) => entry.row);
 }
 
 /** Merge row sets that may overlap (latest rows are usually also inside a history window). */
