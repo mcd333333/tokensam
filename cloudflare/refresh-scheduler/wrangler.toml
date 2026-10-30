@@ -5,9 +5,9 @@ compatibility_date = "2026-09-28"
 # Fires every 5 minutes. This is the only external clock for both scheduled
 # routes now: Vercel Hobby cannot run its own cron more often than once a
 # day, so /api/cron/refresh and /api/cron/geckoterminal are both invoked from
-# here, and each route's own due-check (REFRESH_POLICY/isProviderDue for the
-# former, GECKOTERMINAL_SYNC_INTERVAL for the latter) decides whether that
-# tick actually does anything. See src/index.ts and
+# here. The refresh route's own due-check (REFRESH_POLICY/isProviderDue) decides
+# whether a tick does anything; GeckoTerminal is paced here instead: 7 one-token
+# ?slice=1 calls per tick, 6.5 s apart. See src/index.ts and
 # docs/geckoterminal-integration.md.
 [triggers]
 crons = ["*/5 * * * *"]
