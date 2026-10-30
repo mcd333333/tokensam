@@ -192,7 +192,9 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .hero-card-label { max-width: 11ch; }
 .hero-card-kicker { display: flex; align-items: center; gap: 7px; order: 0; }
 .hero-card-detail { order: 3; color: #b8ab92; font-size: clamp(10px, .72vw, 13px); font-weight: 550; letter-spacing: .08em; text-transform: uppercase; }
-.hero-card-updated .hero-card-value { font-size: clamp(16px, 1.05vw, 22px); white-space: nowrap; }
+.hero-card-updated .hero-card-kicker { font-size: clamp(11px, .88vw, 15px); }
+.hero-card-updated .hero-card-value { font-size: clamp(18px, 1.2vw, 24px); white-space: nowrap; }
+.hero-card-updated .hero-card-detail { font-size: clamp(11px, .8vw, 14px); }
 .hero-card-status { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--positive); }
 .hero-card-status.stale { background: #d6a44a; }
 .error-banner { padding: 10px 12px; border: 1px solid rgb(195 50 43 / 45%); border-left: 3px solid var(--crimson); border-radius: var(--radius); background: var(--crimson-soft); color: #e7b4ae; font-size: 13px; }
@@ -771,7 +773,7 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 @media (max-width: 1250px) {
   .hero-card { padding: 20px 16px; gap: 10px; }
   .hero-card-icon svg { width: 28px; height: 28px; }
-  .hero-card-updated .hero-card-value { font-size: 16px; }
+  .hero-card-updated .hero-card-value { font-size: 18px; }
 }
 @media (max-width: 720px) {
   .hero-card { min-height: 136px; }
@@ -779,4 +781,7 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 }
 @media (max-width: 380px) {
   .hero-card { flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
+}
+@media (min-width: 381px) and (max-width: 420px) {
+  .hero-card-updated { flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
 }
