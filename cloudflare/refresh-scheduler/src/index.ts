@@ -294,6 +294,41 @@ function isSuccessfulResponse(result: RouteResult): boolean {
   return !result.error && result.status >= 200 && result.status < 300;
 }
 
+const GECKOTERMINAL_SLICES_PER_TICK = 7;
+// GeckoTerminal's public limit is paced at 6.5 s/request (same floor as the collector itself).
+const GECKOTERMINAL_PACE_MS = 6_500;
+const GECKOTERMINAL_RATE_LIMIT_COOLDOWN_MS = 20_000;
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Collects GeckoTerminal one token per call (`?slice=1`) and does the pacing here, so Vercel is
+ * billed ~2 s per token instead of holding a function open for ~260 s while it sleeps between
+ * requests. 7 tokens per 5-minute tick is the same throughput the old 15-minute, ~21-token run had.
+ * Stops on the first non-2xx (busy/disabled/failed) and backs off when a call reports a 429.
+ */
+async function runGeckoTerminalSlices(env: Env): Promise<RouteResult> {
+  let last: RouteResult = { path: "/api/cron/geckoterminal", status: 0, body: "", error: "no slices ran" };
+  let done = 0;
+  for (let i = 0; i < GECKOTERMINAL_SLICES_PER_TICK; i += 1) {
+    last = await callRoute(env.REFRESH_URL, "/api/cron/geckoterminal?slice=1", env.CRON_SECRET);
+    if (!isSuccessfulResponse(last)) break;
+    done += 1;
+    let status = "";
+    let rateLimited = false;
+    try {
+      const body = JSON.parse(last.body) as { status?: string; rateLimitEvents?: number };
+      status = body.status ?? "";
+      rateLimited = (body.rateLimitEvents ?? 0) > 0;
+    } catch { /* non-JSON 2xx: keep going */ }
+    if (status === "disabled") break;
+    if (i < GECKOTERMINAL_SLICES_PER_TICK - 1) await sleep(rateLimited ? GECKOTERMINAL_RATE_LIMIT_COOLDOWN_MS : GECKOTERMINAL_PACE_MS);
+  }
+  if (last.error) console.error(`refresh-scheduler: /api/cron/geckoterminal request failed after ${done} slices: ${last.error}`);
+  else console.log(`refresh-scheduler: /api/cron/geckoterminal ${done} slices, last -> ${last.status} ${last.body.slice(0, 300)}`);
+  return last;
+}
+
 /**
  * Runs on every 5-minute Cron Trigger tick (see wrangler.toml).
  *
@@ -356,9 +391,7 @@ async function run(env: Env): Promise<RouteResult[]> {
   let geckoTerminalResult: RouteResult | null = null;
 
   if (isSuccessfulResponse(refreshResult)) {
-    geckoTerminalResult = await callRoute(env.REFRESH_URL, "/api/cron/geckoterminal", env.CRON_SECRET);
-    if (geckoTerminalResult.error) console.error(`refresh-scheduler: /api/cron/geckoterminal request failed: ${geckoTerminalResult.error}`);
-    else console.log(`refresh-scheduler: /api/cron/geckoterminal -> ${geckoTerminalResult.status} ${geckoTerminalResult.body.slice(0, 500)}`);
+    geckoTerminalResult = await runGeckoTerminalSlices(env);
   } else {
     console.error(
       `refresh-scheduler: skipping /api/cron/geckoterminal this tick because /api/cron/refresh did not return 2xx `

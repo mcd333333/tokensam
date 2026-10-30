@@ -35,6 +35,8 @@ const PROCESSING_BUDGET_MS = 255_000;
 // persistence + finalization; persistence's AbortSignal fires when this much
 // time is left before the platform's own 300s kill.
 const PERSIST_DEADLINE_MARGIN_MS = 10_000;
+// A slice call (one token, plus a 429 cooldown or retry at worst) must end well inside this.
+const SLICE_BUDGET_MS = 60_000;
 // Just above maxDuration (300s) so a genuinely running invocation is never
 // stolen. Ownership is renewed by a heartbeat during token collection (see
 // onHeartbeat below), not just asserted once at acquire time: a live
@@ -104,8 +106,13 @@ export async function GET(request: Request): Promise<Response> {
     : "manual";
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "1";
+  // Slice mode (?slice=N): the Cloudflare Worker paces the requests and calls this route once per
+  // N tokens (normally 1), so this invocation lasts a couple of seconds instead of ~260 s of
+  // billed sleeping. No due-check: the Worker's 5-minute tick is the cadence.
+  const sliceParam = Number(url.searchParams.get("slice"));
+  const slice = Number.isInteger(sliceParam) && sliceParam > 0 ? Math.min(sliceParam, 10) : null;
 
-  if (!force) {
+  if (!force && slice === null) {
     const intervalMs = positiveNumber(process.env.GECKOTERMINAL_SYNC_INTERVAL) ?? DEFAULT_SYNC_INTERVAL_MS;
     const lastSuccess = await lastSuccessfulGeckoTerminalSync(client);
     if (lastSuccess && now.getTime() - Date.parse(lastSuccess) < intervalMs) {
@@ -131,7 +138,8 @@ export async function GET(request: Request): Promise<Response> {
   );
   try {
     const result = await runGeckoTerminalScheduledCollection(client, {
-      deadlineAt: routeStart + PROCESSING_BUDGET_MS,
+      deadlineAt: routeStart + (slice === null ? PROCESSING_BUDGET_MS : SLICE_BUDGET_MS),
+      maxTokens: slice ?? undefined,
       minRequestIntervalMs: positiveNumber(process.env.GECKOTERMINAL_BATCH_DELAY_MS) ?? undefined,
       onHeartbeat: () => renewGeckoTerminalSyncLock(client, runId, lockToken, new Date(), LOCK_LEASE_MS),
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,

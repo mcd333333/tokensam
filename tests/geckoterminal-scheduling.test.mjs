@@ -481,6 +481,30 @@ test("integration: successive scheduled runs resume after the previous stop, rea
   }
 });
 
+test("slice mode: one token per call, no pacing sleep, no gap repair, cursor advances exactly one and wraps", async () => {
+  const db = createFakeSupabase({ seed: baseSeed() });
+  const tokenIds = [aave.tokenId, jupiter.tokenId, uni.tokenId];
+  const requests = [];
+  const fetchImpl = async (url) => { requests.push(String(url)); return new Response(JSON.stringify({ data: [] }), { status: 200 }); };
+  let slept = 0;
+  const sleep = async (ms) => { slept += ms; };
+
+  const seen = [];
+  for (let call = 0; call < 4; call += 1) {
+    const { runId, lockToken } = await acquireGeckoTerminalSyncLock(db.client, "scheduled", new Date(Date.UTC(2026, 9, 1, 0, call)), 15 * 60 * 1000);
+    const result = await runGeckoTerminalScheduledCollection(db.client, { tokenIds, fetchImpl, sleep, maxTokens: 1 });
+    assert.equal(result.attempted, 1);
+    assert.equal(result.succeeded.length, 1);
+    assert.equal(result.gapRepair, undefined, "slice calls skip gap repair");
+    seen.push(result.succeeded[0]);
+    await finishGeckoTerminalSyncLock(db.client, runId, lockToken, "succeeded", new Date(Date.UTC(2026, 9, 1, 0, call, 30)), result, null);
+  }
+  assert.equal(requests.length, 4, "exactly one provider request per slice call");
+  assert.equal(slept, 0, "pacing belongs to the caller in slice mode");
+  assert.equal(new Set(seen.slice(0, 3)).size, 3, "three consecutive slices cover three distinct tokens");
+  assert.equal(seen[3], seen[0], "the fourth slice wraps back to the first token");
+});
+
 // ---- Heartbeat / ownership during a scheduled collection ----
 
 test("heartbeat renews the lease during a long rotation, and a stale token cannot", async () => {

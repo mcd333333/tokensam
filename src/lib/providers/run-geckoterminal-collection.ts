@@ -187,6 +187,8 @@ export async function runGeckoTerminalScheduledCollection(
     deadlineAt?: number;
     minRequestIntervalMs?: number;
     startTokenId?: string | null;
+    /** Collect only this many tokens from the rotation cursor and advance it by that many (see the slice comment below). */
+    maxTokens?: number;
     /** Forwarded to fetchGeckoTerminalSnapshotsTolerant; see its own doc comment. */
     onHeartbeat?: () => Promise<boolean>;
     heartbeatIntervalMs?: number;
@@ -201,6 +203,20 @@ export async function runGeckoTerminalScheduledCollection(
     (asset) => activeCanonicalTokenIds.has(asset.tokenId) && (!options.tokenIds || options.tokenIds.includes(asset.tokenId)),
   );
   const startTokenId = options.startTokenId !== undefined ? options.startTokenId : await resolveGeckoTerminalStartTokenId(client);
+
+  // Slice mode: the caller (the Cloudflare Worker) paces the requests and wants exactly `maxTokens`
+  // tokens collected per call, so this invocation never sleeps between provider requests.
+  // The cursor is computed here, against the full rotation, because the collector's own
+  // nextTokenId is relative to the (already shortened) list it was given.
+  let collected = assets;
+  let sliceNextTokenId: string | null | undefined;
+  if (options.maxTokens !== undefined && assets.length > 0) {
+    const startIndex = startTokenId ? Math.max(0, assets.findIndex((asset) => asset.tokenId === startTokenId)) : 0;
+    const rotated = [...assets.slice(startIndex), ...assets.slice(0, startIndex)];
+    const count = Math.min(Math.max(1, Math.floor(options.maxTokens)), rotated.length);
+    collected = rotated.slice(0, count);
+    sliceNextTokenId = rotated[count % rotated.length].tokenId;
+  }
   let ownershipLostDuringCollection = false;
   const onHeartbeat = options.onHeartbeat
     ? async () => {
@@ -209,13 +225,13 @@ export async function runGeckoTerminalScheduledCollection(
       return stillOwner;
     }
     : undefined;
-  const { snapshots, outcomes, nextTokenId } = await fetchGeckoTerminalSnapshotsTolerant(assets, {
+  const { snapshots, outcomes, nextTokenId: collectorNextTokenId } = await fetchGeckoTerminalSnapshotsTolerant(collected, {
     fetchImpl: options.fetchImpl,
     sleep: options.sleep,
     now: options.now,
     deadlineAt: options.deadlineAt,
     minRequestIntervalMs: options.minRequestIntervalMs,
-    startTokenId,
+    startTokenId: sliceNextTokenId !== undefined ? collected[0].tokenId : startTokenId,
     onHeartbeat,
     heartbeatIntervalMs: options.heartbeatIntervalMs,
   });
@@ -252,7 +268,8 @@ export async function runGeckoTerminalScheduledCollection(
   let gapRepair: GeckoTerminalScheduledResult["gapRepair"];
   let gapRepairError: string | undefined;
   const remainingMs = options.deadlineAt !== undefined ? options.deadlineAt - Date.now() : null;
-  if (!ownershipLostDuringCollection && (remainingMs === null || remainingMs > GAP_REPAIR_MIN_BUDGET_MS)) {
+  // Slice calls are short by design; the repair runs on the full-sweep path only.
+  if (sliceNextTokenId === undefined && !ownershipLostDuringCollection && (remainingMs === null || remainingMs > GAP_REPAIR_MIN_BUDGET_MS)) {
     try {
       gapRepair = await repairGeckoTerminalDailyGaps(client, {
         fetchImpl: options.fetchImpl,
@@ -264,9 +281,14 @@ export async function runGeckoTerminalScheduledCollection(
     }
   }
 
+  // A slice token cut off by the time budget must be retried next call, so only advance past it otherwise.
+  const nextTokenId = sliceNextTokenId !== undefined && !outcomes.some((outcome) => outcome.status === "skipped_time_budget")
+    ? sliceNextTokenId
+    : collectorNextTokenId;
+
   return {
     provider: "geckoterminal",
-    attempted: assets.length,
+    attempted: collected.length,
     succeeded: outcomes.filter((outcome) => outcome.status === "succeeded").map((outcome) => outcome.tokenId),
     failed: outcomes.filter((outcome) => outcome.status === "failed").map((outcome) => ({ tokenId: outcome.tokenId, error: outcome.error ?? "Unknown error." })),
     skipped: outcomes.filter((outcome) => outcome.status === "skipped_time_budget").map((outcome) => outcome.tokenId),
