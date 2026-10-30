@@ -112,21 +112,9 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .sidebar-brand { display: block; margin: -10px 0 -6px; padding: 0; text-decoration: none; }
 .sidebar-brand img { display: block; width: 100%; max-width: 190px; height: auto; margin: 0 auto; }
 .mobile-wordmark { display: none; }
-.nav-short-label { display: none; }
-/* Persistent research navigation on desktop and the mobile top bar. */
-.sidebar-nav { display: grid; gap: 5px; }
 .nav-label { padding: 0 10px 8px; color: var(--subtle); font-size: 10px; font-weight: 650; letter-spacing: .16em; text-transform: uppercase; }
-.nav-link { position: relative; display: flex; min-height: 38px; align-items: center; gap: 10px; padding: 0 10px; border-radius: var(--radius); color: var(--muted); font-size: 13px; text-decoration: none; }
-.nav-link span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-link:hover { background: var(--surface-raised); color: var(--ink); }
-.nav-link.active { background: rgb(224 73 63 / 9%); color: var(--ink-strong); font-weight: 600; }
-.nav-link.active::before { position: absolute; top: 9px; bottom: 9px; left: 0; width: 2px; background: var(--crimson-bright); content: ""; }
-.nav-sub { margin-left: 14px; font-size: 12px; }
-.nav-icon { width: 15px; height: 15px; flex: 0 0 15px; fill: none; stroke: var(--gold); stroke-width: 1.2; }
 /* 24H Movers: research navigation, not a ticker; only the change carries color */
 .sidebar-movers { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
-/* Give navigation and the market panels their own breathing room. */
-.sidebar-nav + .sidebar-movers { margin-top: 0; padding-top: 20px; }
 .movers-heading { padding-bottom: 0; font-family: var(--font-sans); line-height: 1.5; }
 .movers-group { display: grid; gap: 2px; }
 .movers-group + .movers-group { padding-top: 6px; border-top: 1px solid var(--line-soft); }
@@ -587,13 +575,9 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
   .sidebar-brand img { width: 66px; }
   .mobile-wordmark { display: inline; color: var(--gold); font-family: var(--font-display); font-size: 15px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
   .mobile-wordmark b { color: var(--crimson-bright); font-weight: 600; }
-  .sidebar-nav { display: flex; align-items: center; gap: 4px; margin-left: auto; min-width: 0; }
   .sidebar { overflow: visible; }
   /* The top bar has no room for movers; the Research Universe table already shows 24h change. */
   .nav-label, .sidebar-foot, .sidebar-movers { display: none; }
-  .nav-link { min-height: 34px; }
-  .nav-link.active::before { top: auto; right: 10px; bottom: -1px; left: 10px; width: auto; height: 2px; }
-  .nav-sub { margin-left: 0; }
   .main-area { margin-left: 0; }
   .section-nav { top: 60px; }
   .summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -621,8 +605,6 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
   .sidebar { gap: 10px; height: 56px; }
   .sidebar-brand img { width: 60px; }
   .mobile-wordmark { font-size: 13px; }
-  .nav-link span:last-child { max-width: 130px; }
-  .sidebar-nav .nav-link:not(.active) span:last-child { display: none; }
   .section-nav { top: 56px; }
   .data-status-popover { left: 50%; transform: translateX(-50%); text-align: left; }
   .stat { padding: 12px 14px; }
@@ -712,15 +694,9 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
   .price-flash-up, .price-flash-down { animation: none; }
 }
 
-/* Workspace chrome and research hierarchy. */
+/* Research hierarchy. */
 .skip-link { position: fixed; top: 10px; left: 10px; z-index: 100; padding: 10px 16px; border-radius: 6px; background: var(--ink-strong); color: var(--canvas); transform: translateY(-160%); }
 .skip-link:focus { transform: translateY(0); }
-.workspace-bar { display: flex; min-height: 62px; align-items: center; justify-content: space-between; gap: 20px; padding: 12px var(--page-inset-start); border-bottom: 1px solid var(--line-soft); }
-.workspace-location { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 11px; }
-.workspace-location strong { color: var(--ink); font-weight: 500; }
-.workspace-mark { display: grid; width: 26px; height: 26px; place-items: center; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--gold); font-family: var(--font-display); font-size: 10px; }
-.workspace-divider { color: var(--subtle); }
-.workspace-caption { color: var(--subtle); font-size: 11px; }
 .section-kicker { margin-bottom: 8px; color: var(--bronze); font-size: 10px; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; }
 .asset-count { padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); font-size: 11px; font-weight: 450; letter-spacing: 0; }
 .universe-hint { padding-bottom: 3px; color: var(--subtle); font-size: 11px; }
@@ -735,20 +711,10 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 }
 @media (max-width: 1024px) {
   .sidebar-brand { margin: 0; }
-  .sidebar-nav { display: flex; }
-  .workspace-bar { min-height: 48px; }
-  .workspace-caption { display: none; }
 }
 @media (max-width: 720px) {
-  .workspace-bar { display: none; }
   .sidebar-brand img { width: 46px; }
   .mobile-wordmark { font-size: 11px; letter-spacing: .03em; }
-  .sidebar-nav .nav-link .nav-full-label { display: none; }
-  .sidebar-nav .nav-link .nav-short-label { display: inline; }
-  .sidebar-nav .nav-link { min-height: 40px; padding: 0 7px; font-size: 11px; }
-  .sidebar-nav .nav-link span:last-child { max-width: 96px; }
-  .sidebar-nav .nav-link .nav-icon { display: none; }
-  .sidebar-nav .nav-sub span:last-child { max-width: 70px; }
   .universe { margin-top: 28px; scroll-margin-top: 72px; }
   .universe-head { gap: 10px; }
   .universe-head h2 { font-size: 22px; }
