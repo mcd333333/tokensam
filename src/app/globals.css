@@ -192,9 +192,11 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .hero-card-label { max-width: 11ch; }
 .hero-card-kicker { display: flex; align-items: center; gap: 7px; order: 0; }
 .hero-card-detail { order: 3; color: #b8ab92; font-size: clamp(10px, .72vw, 13px); font-weight: 550; letter-spacing: .08em; text-transform: uppercase; }
-.hero-card-updated .hero-card-kicker { font-size: clamp(11px, .88vw, 15px); }
-.hero-card-updated .hero-card-value { font-size: clamp(18px, 1.2vw, 24px); white-space: nowrap; }
-.hero-card-updated .hero-card-detail { font-size: clamp(11px, .8vw, 14px); }
+.hero-card-updated { flex-direction: column; align-items: flex-start; justify-content: center; }
+.hero-card-updated .hero-card-icon { position: absolute; top: 17px; right: 17px; }
+.hero-card-updated .hero-card-kicker { font-size: clamp(12px, 1vw, 16px); }
+.hero-card-updated .hero-card-value { font-size: clamp(22px, 1.5vw, 28px); white-space: nowrap; }
+.hero-card-updated .hero-card-detail { font-size: clamp(12px, .85vw, 15px); }
 .hero-card-status { width: 5px; height: 5px; flex: 0 0 5px; border-radius: 50%; background: var(--positive); }
 .hero-card-status.stale { background: #d6a44a; }
 .error-banner { padding: 10px 12px; border: 1px solid rgb(195 50 43 / 45%); border-left: 3px solid var(--crimson); border-radius: var(--radius); background: var(--crimson-soft); color: #e7b4ae; font-size: 13px; }
@@ -600,7 +602,6 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
   .hero-stats { gap: 12px; }
   .hero-card { min-height: 132px; }
   .hero-card-value { font-size: 24px; }
-  .hero-card-updated .hero-card-value { font-size: 18px; }
   :root { --gutter: 16px; }
   body { font-size: 14px; }
   .page { padding-top: 18px; }
@@ -753,7 +754,6 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
   .hero-art img { transform: none; object-position: 65% 35%; mask-image: linear-gradient(#000 75%, transparent 100%); }
   .hero-stats { max-width: none; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .hero-card { min-height: 150px; }
-  .hero-card-updated .hero-card-value { font-size: 18px; }
 }
 @media (max-width: 720px) {
   .samurai-hero .hero-copy { max-width: none; min-height: 330px; }
@@ -773,7 +773,7 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 @media (max-width: 1250px) {
   .hero-card { padding: 20px 16px; gap: 10px; }
   .hero-card-icon svg { width: 28px; height: 28px; }
-  .hero-card-updated .hero-card-value { font-size: 18px; }
+  .hero-card-updated .hero-card-value { font-size: 20px; }
 }
 @media (max-width: 720px) {
   .hero-card { min-height: 136px; }
