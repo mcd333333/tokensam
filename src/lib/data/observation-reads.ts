@@ -194,12 +194,33 @@ export function mergeById<T extends { id: number }>(...sets: T[][]): T[] {
 }
 
 /**
+ * The newest row per token/provider/metric in the window, from the dashboard_latest_observations RPC
+ * (see its migration for why the paged read it replaces timed out). Returns null on any error, e.g. the
+ * migration not being applied yet, so the caller falls back to the paged read and the page still loads.
+ * Paged only as a guard: PostgREST silently truncates a response at 1,000 rows.
+ */
+async function readRecentViaRpc<T>(client: SupabaseAdminClient, tokenIds: string[], metricIds: string[], since: string): Promise<{ rows: T[]; missing: boolean } | null> {
+  try {
+    return await readPages<T>((from, to) => client.rpc("dashboard_latest_observations", {
+      p_token_ids: tokenIds, p_providers: PROVIDERS, p_metrics: metricIds, p_since: since,
+    }).range(from, to), "read recent observations (rpc)");
+  } catch (error) {
+    console.error("dashboard_latest_observations failed; falling back to the paged read:", error);
+    return null;
+  }
+}
+
+/**
  * Read from a recent indexed window instead of the historical latest-observations RPC.
  * The RPC's ranking query timed out in production as the observations table grew.
  * Daily CoinGecko aggregates fill values whose source rows have rolled out of that
  * recent window.
  */
-export async function readLatestObservations<T extends Row>(client: SupabaseAdminClient, tokenIds: string[]): Promise<T[]> {
+export async function readLatestObservations<T extends Row>(
+  client: SupabaseAdminClient,
+  tokenIds: string[],
+  options: { metricIds?: string[] } = {},
+): Promise<T[]> {
   if (tokenIds.length === 0) return [];
   const TOKEN_BATCH_SIZE = 50;
   const batches = Array.from({ length: Math.ceil(tokenIds.length / TOKEN_BATCH_SIZE) }, (_, index) =>
@@ -210,13 +231,16 @@ export async function readLatestObservations<T extends Row>(client: SupabaseAdmi
     const utcToday = new Date();
     utcToday.setUTCHours(0, 0, 0, 0);
     const tomorrow = new Date(utcToday.getTime() + 24 * 60 * 60 * 1000);
+    const readRecentPaged = () => readPages<T>((from, to) => observationRead(client, (relation) => client.from(relation)
+      .select(COLUMNS).in("token_id", batch).in("provider_id", PROVIDERS).is("excluded_reason", null)
+      .gte("observed_at", since)
+      .order("token_id").order("provider_id").order("metric_id")
+      .order("observed_at", { ascending: false }).order("collected_at", { ascending: false }).order("id", { ascending: false })
+      .range(from, to)), "read recent observations");
     const [recent, todaySnapshots, aggregates] = await Promise.all([
-      readPages<T>((from, to) => observationRead(client, (relation) => client.from(relation)
-        .select(COLUMNS).in("token_id", batch).in("provider_id", PROVIDERS).is("excluded_reason", null)
-        .gte("observed_at", since)
-        .order("token_id").order("provider_id").order("metric_id")
-        .order("observed_at", { ascending: false }).order("collected_at", { ascending: false }).order("id", { ascending: false })
-        .range(from, to)), "read recent observations"),
+      options.metricIds
+        ? readRecentViaRpc<T>(client, batch, options.metricIds, since).then((rows) => rows ?? readRecentPaged())
+        : readRecentPaged(),
       readPages<T>((from, to) => observationRead(client, (relation) => client.from(relation)
         .select(COLUMNS).in("token_id", batch).eq("provider_id", "coingecko").in("metric_id", COINGECKO_DAILY_METRICS)
         .is("excluded_reason", null).gte("observed_at", utcToday.toISOString()).lt("observed_at", tomorrow.toISOString())

@@ -182,7 +182,99 @@ test("readLatestObservations still collapses to the newest row per token/provide
   const read = await readLatestObservations(db.client, ["token-a"]);
   const prices = read.filter((row) => row.metric_id === "price_usd");
   assert.equal(prices.length, 1, "one row per token/provider/metric");
-  assert.equal(prices[0].observed_at, minutesAgo(60), "the newest observation wins, not the highest id");
+  assert.ok(Math.abs(Date.parse(prices[0].observed_at) - Date.parse(minutesAgo(60))) < 5_000, "the newest observation wins, not the highest id");
+});
+
+// ---- dashboard_latest_observations RPC path (see its migration) ----
+
+const minutesAgo = (minutes) => new Date(Date.now() - minutes * 60_000).toISOString();
+const DISPLAYED = ["price_usd", "volume_24h_usd"];
+
+function latestFixture() {
+  return [
+    observation(1, "token-a", "coingecko", "price_usd", minutesAgo(180)),
+    observation(2, "token-a", "coingecko", "price_usd", minutesAgo(60)),
+    observation(3, "token-a", "coingecko", "price_usd", minutesAgo(120)),
+    observation(4, "token-a", "binance", "price_usd", minutesAgo(5)),
+    observation(5, "token-b", "coingecko", "volume_24h_usd", minutesAgo(30)),
+    observation(6, "token-b", "coingecko", "market_cap_usd", minutesAgo(30)), // not a displayed metric
+  ];
+}
+
+/** Stands in for the SQL function: newest row per token/provider/metric in the window, displayed metrics only. */
+function fakeLatestRpc(rows, seen) {
+  return (name, params) => {
+    // recordApproxRead also calls client.rpc("record_quota_usage"); only the latest-read function is under test.
+    if (name !== "dashboard_latest_observations") return Promise.resolve({ data: null, error: null });
+    seen.push({ name, params });
+    const newest = new Map();
+    for (const row of rows) {
+      if (!params.p_token_ids.includes(row.token_id) || !params.p_providers.includes(row.provider_id) || !params.p_metrics.includes(row.metric_id)) continue;
+      if (row.observed_at < params.p_since) continue;
+      const key = `${row.token_id}|${row.provider_id}|${row.metric_id}`;
+      const held = newest.get(key);
+      if (!held || row.observed_at > held.observed_at) newest.set(key, row);
+    }
+    const data = [...newest.values()];
+    const response = Promise.resolve({ data, error: null });
+    response.range = (from, to) => Promise.resolve({ data: data.slice(from, to + 1), error: null });
+    return response;
+  };
+}
+
+test("RPC path returns the same rows as the paged read for the displayed metrics", async () => {
+  const rows = latestFixture();
+  const paged = createFakeSupabase({ seed: { token_metric_observations: rows }, views: false });
+  const viaRpc = createFakeSupabase({ seed: { token_metric_observations: rows }, views: false });
+  const seen = [];
+  viaRpc.client.rpc = fakeLatestRpc(rows, seen);
+
+  const expected = (await readLatestObservations(paged.client, ["token-a", "token-b"]))
+    .filter((row) => DISPLAYED.includes(row.metric_id)).map((row) => row.id).sort((a, b) => a - b);
+  // Today's CoinGecko snapshot rows (market cap etc.) are still read separately, as before; live-data's
+  // readLatest filters to the displayed metrics afterwards, which is what is compared here.
+  const actual = (await readLatestObservations(viaRpc.client, ["token-a", "token-b"], { metricIds: DISPLAYED }))
+    .filter((row) => DISPLAYED.includes(row.metric_id)).map((row) => row.id).sort((a, b) => a - b);
+
+  assert.deepEqual(actual, expected);
+  assert.deepEqual(actual, [2, 4, 5], "newest per key, not the highest id");
+  assert.equal(seen.length, 1, "one RPC call for a batch of tokens");
+  assert.equal(seen[0].name, "dashboard_latest_observations");
+  assert.deepEqual(seen[0].params.p_metrics, DISPLAYED);
+});
+
+test("RPC path falls back to the paged read when the function errors", async () => {
+  const rows = latestFixture();
+  const db = createFakeSupabase({ seed: { token_metric_observations: rows }, views: false });
+  db.client.rpc = () => {
+    const response = Promise.resolve({ data: null, error: { code: "PGRST202", message: "Could not find the function" } });
+    response.range = () => response;
+    return response;
+  };
+
+  const read = await readLatestObservations(db.client, ["token-a", "token-b"], { metricIds: DISPLAYED });
+  assert.deepEqual(read.filter((row) => DISPLAYED.includes(row.metric_id)).map((row) => row.id).sort((a, b) => a - b), [2, 4, 5]);
+});
+
+test("without metricIds the RPC is never used, so other callers keep every metric", async () => {
+  const rows = latestFixture();
+  const db = createFakeSupabase({ seed: { token_metric_observations: rows }, views: false });
+  const seen = [];
+  db.client.rpc = fakeLatestRpc(rows, seen);
+
+  const read = await readLatestObservations(db.client, ["token-a", "token-b"]);
+  assert.equal(seen.length, 0);
+  assert.ok(read.some((row) => row.metric_id === "market_cap_usd"), "non-displayed metrics are still returned");
+});
+
+test("RPC path pages past PostgREST's 1,000-row response cap instead of truncating", async () => {
+  const metrics = Array.from({ length: 1_500 }, (_, index) => `metric-${index}`);
+  const rows = metrics.map((metric, index) => observation(index + 1, "token-a", "coingecko", metric, minutesAgo(10)));
+  const db = createFakeSupabase({ seed: { token_metric_observations: [] }, views: false });
+  db.client.rpc = fakeLatestRpc(rows, []);
+
+  const read = await readLatestObservations(db.client, ["token-a"], { metricIds: metrics });
+  assert.equal(read.length, 1_500);
 });
 
 let failures = 0;

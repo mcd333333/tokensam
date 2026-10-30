@@ -799,7 +799,7 @@ async function readDashboardCalculated(client: SupabaseAdminClient, tokenIds: st
 
 /** Latest value per displayed metric; history only where a view needs it. */
 async function readLatest(client: SupabaseAdminClient, tokenIds: string[]): Promise<DbObservation[]> {
-  const rows = await readLatestObservations<DbObservation>(client, tokenIds);
+  const rows = await readLatestObservations<DbObservation>(client, tokenIds, { metricIds: OBSERVED_METRICS });
   return rows.filter((row) => OBSERVED_METRICS.includes(row.metric_id));
 }
 
