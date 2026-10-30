@@ -46,7 +46,7 @@ function Cell({ row, column, flash }: { row: Row; column: Column; flash?: FlashD
 
 function AssetCell({ token }: { token: DashboardToken }) {
   return (
-    <Link href={`/tokens/${token.id}`} className="asset-link" aria-label={`Open ${token.name} profile`}>
+    <Link href={`/tokens/${token.id}`} prefetch={false} className="asset-link" aria-label={`Open ${token.name} profile`}>
       <TokenLogo src={token.logoUrl} symbol={token.symbol} size={28} />
       <span className="asset-copy">
         <span className="asset-name">{token.name}</span>

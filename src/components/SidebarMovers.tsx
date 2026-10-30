@@ -20,6 +20,7 @@ function MoverList({ label, movers, direction }: { label: string; movers: Mover[
             <Link
               className="mover-row"
               href={`/tokens/${mover.id}`}
+              prefetch={false}
               title={mover.name}
               aria-label={`${mover.name} (${mover.symbol}), ${verb} ${changeText(Math.abs(mover.change24hPct)).replace(/^\+/, "")} over 24 hours`}
             >
@@ -49,6 +50,7 @@ function VolumeList({ label, id, rows }: { label: string; id: string; rows: Volu
             <Link
               className="mover-row"
               href={`/tokens/${row.id}`}
+              prefetch={false}
               title={row.name}
               aria-label={`${row.name} (${row.symbol}), ${formatVolumeCompact(row.volume24hUsd)} traded over 24 hours`}
             >
