@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { LiveTokenProfileData } from "@/types/token";
 import { buildProfileModel, type Card, type PoolRow } from "@/lib/ui/profile-model";
@@ -14,8 +13,7 @@ import { SourcesMethodology } from "@/components/SourcesMethodology";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CopyButton } from "@/components/CopyButton";
 import { PageFooter } from "@/components/AppShell";
-
-const AI_BUTTON_ART = { src: "/brand/ai-research-report-button.png", width: 2000, height: 667 } as const;
+import "./TokenProfile.css";
 
 function Change({ value, label }: { value: number | null; label: string }) {
   const change = formatChange(value);
@@ -106,7 +104,30 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
   const payload = useMemo(() => buildProfilePayload(data), [data]);
   const copyData = useMemo(() => formatProfilePayloadText(payload), [payload]);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  // Clicking the header's "Generate AI Research Report" art button scrolls to the report section
+  const [activeSection, setActiveSection] = useState("overview");
+  useEffect(() => {
+    const sections = model.sections.map((section) => document.getElementById(section.id))
+      .filter((element): element is HTMLElement => element !== null);
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      let current = sections[0]?.id ?? "overview";
+      for (const section of sections) {
+        if (section.getBoundingClientRect().top <= 160) current = section.id;
+      }
+      setActiveSection(current);
+    };
+    const schedule = () => { if (!frame) frame = window.requestAnimationFrame(update); };
+    update();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+    };
+  }, [model.sections]);
+  // Clicking the header's AI research report button scrolls to the report section
   // and starts generation there; incrementing this counter is the signal DeepAnalysisPanel watches
   // (see its own useEffect) to start a fresh generation even if one is already showing.
   const [autoGenerateSignal, setAutoGenerateSignal] = useState(0);
@@ -116,7 +137,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
   const { fundamentals, marketStructure, dexMarkets, onchainIdentity, tokenomics, history, technical, divergence } = model;
   const hasCrossMetric = divergence.comparisons.length + divergence.signals.length + divergence.indicators.length > 0;
 
-  const reveal = (id: string) => window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  const reveal = (id: string) => window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }));
   const openAnalysis = () => { setAutoGenerateSignal((signal) => signal + 1); reveal("analysis"); };
 
   return (
@@ -129,6 +150,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
         <div className="profile-identity">
           <TokenLogo src={data.logoUrl} symbol={token.symbol} size={52} />
           <div className="identity-copy">
+            <p className="profile-kicker">Token research</p>
             <h1>{token.name} <span className="symbol">{token.symbol}</span></h1>
             <div className="identity-meta">
               <span>{token.chain}</span>
@@ -141,10 +163,13 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
             </div>
           </div>
         </div>
-        <button className="blade-button blade-button-art blade-button-art-sm" type="button" onClick={openAnalysis} aria-controls="deep-ai-analysis" aria-label="Generate a fresh AI research report">
-          <Image src={AI_BUTTON_ART.src} alt="Generate AI Research Report" width={AI_BUTTON_ART.width} height={AI_BUTTON_ART.height} className="blade-art" priority />
+        <button className="profile-report-button" type="button" onClick={openAnalysis} aria-controls="deep-ai-analysis" aria-label="Generate a fresh AI research report">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6ZM8 12l3 3 5-6" /></svg>
+          <span>AI research report<small>Generate a fresh analysis</small></span>
+          <span className="report-arrow" aria-hidden="true">→</span>
         </button>
         <div className="profile-quote">
+          <span className="profile-kicker">Token price · USD</span>
           {price ? <strong className="quote-price">{price}</strong> : <strong className="quote-price muted">Price not reported</strong>}
           <div className="quote-changes">
             <Change value={token.change24hPct} label="24h" />
@@ -155,7 +180,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
       </header>
 
       <nav className="section-nav" aria-label="Profile sections">
-        {model.sections.map((section) => <a key={section.id} href={`#${section.id}`} onClick={section.id === "sources" ? () => setSourcesOpen(true) : undefined}>{section.label}</a>)}
+        {model.sections.map((section) => <a key={section.id} href={`#${section.id}`} aria-current={activeSection === section.id ? "location" : undefined} onClick={() => { setActiveSection(section.id); if (section.id === "sources") setSourcesOpen(true); }}>{section.label}</a>)}
       </nav>
 
       <section className="profile-section" id="market" aria-labelledby="market-title">
