@@ -102,9 +102,9 @@ export function UniverseHero({ assets, chains, metricsPerAsset, updatedAt, refre
           <span>Enter the crypto</span> <span className="hero-title-accent">Samuraiverse</span>
         </h1>
         <p className="hero-lede">
-          Understand crypto beyond trading prices. Slash through market data, token fundamentals, and on-chain metrics to
-          uncover intelligent signal with AI.
+          Go beyond the price. Explore token fundamentals, market activity, and on-chain signals in one research workspace.
         </p>
+        <a className="hero-explore" href="#research-universe">Explore the universe <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 15 15 5M5 5h10v10" /></svg></a>
         {error ? <p className="error-banner" role="alert">{error}</p> : null}
       </div>
       <div className="hero-stats" aria-label="Research universe at a glance">

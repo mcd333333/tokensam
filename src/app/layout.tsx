@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import { Cinzel, Inter } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const inter = localFont({ src: "./fonts/inter-latin-wght-normal.woff2", variable: "--font-inter", display: "swap", weight: "100 900" });
 // Display face echoing the emblem's inscriptional capitals; used for headings only.
-const cinzel = Cinzel({ subsets: ["latin"], weight: ["500", "600"], variable: "--font-cinzel", display: "swap" });
+const cinzel = localFont({ src: "./fonts/cinzel-latin-wght-normal.woff2", variable: "--font-cinzel", display: "swap", weight: "400 900" });
 
 export const metadata: Metadata = {
   title: { default: "Token Samurai · Crypto Research", template: "%s · Token Samurai" },

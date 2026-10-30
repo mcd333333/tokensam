@@ -145,12 +145,14 @@ export default function Dashboard({ tokens, error, dataUpdatedAt, refreshStatus,
         </div>
       </section>
 
-      <section className="universe" aria-labelledby="universe-title">
+      <section className="universe" id="research-universe" aria-labelledby="universe-title">
         <div className="universe-head">
           <div>
-            <h2 id="universe-title">Research Universe</h2>
+            <p className="section-kicker">Discover & compare</p>
+            <h2 id="universe-title">Research Universe <span className="asset-count">{summary.assets} assets</span></h2>
             <p className="scope-line">{SCOPE_NOTE}</p>
           </div>
+          <span className="universe-hint">Select an asset to explore its fundamentals</span>
         </div>
 
         <div className="filters" aria-label="Search and filters">
@@ -186,12 +188,12 @@ export default function Dashboard({ tokens, error, dataUpdatedAt, refreshStatus,
         </div>
 
         <div className="table-meta">
-          <span>
+          <span role="status" aria-live="polite" aria-atomic="true">
             {displayed.length > 0
               ? <><b>{(pagination.page - 1) * PAGE_SIZE + 1}–{(pagination.page - 1) * PAGE_SIZE + pagination.items.length}</b> of <b>{displayed.length}</b> assets</>
               : <><b>0</b> assets</>}
           </span>
-          <span className="muted-copy"><span className="cell-missing" aria-hidden="true">—</span> Data unavailable; the reason is on each dash</span>
+          <span className="muted-copy"><span className="cell-missing" aria-hidden="true">—</span> Unavailable data · Hover for details</span>
           {hidden.length > 0 && displayed.length > 0 ? <span className="muted-copy">Hidden, no data for these assets: {hidden.map((column) => column.label).join(", ")}</span> : null}
         </div>
 

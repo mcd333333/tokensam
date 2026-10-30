@@ -26,6 +26,7 @@ function UniverseIcon() {
 export function AppShell({ active, current, movers, children }: { active: "universe" | "token" | "none"; current?: CurrentToken; movers?: Movers | null; children: ReactNode }) {
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">Skip to content</a>
       <aside className="sidebar" aria-label="Token Samurai">
         <Link className="sidebar-brand" href="/" aria-label="Token Samurai — Research Universe">
           <Image src={EMBLEM.src} alt="Token Samurai" width={EMBLEM.width} height={EMBLEM.height} sizes="(max-width: 1024px) 72px, 256px" quality={90} preload />
@@ -33,8 +34,8 @@ export function AppShell({ active, current, movers, children }: { active: "unive
         </Link>
         <nav className="sidebar-nav" aria-label="Main navigation">
           <span className="nav-label">Research</span>
-          <Link className={`nav-link${active === "universe" ? " active" : ""}`} href="/" aria-current={active === "universe" ? "page" : undefined}>
-            <UniverseIcon /><span>Research Universe</span>
+          <Link className={`nav-link${active === "universe" ? " active" : ""}`} href="/" aria-label="Research Universe" aria-current={active === "universe" ? "page" : undefined}>
+            <UniverseIcon /><span className="nav-full-label">Research Universe</span><span className="nav-short-label" aria-hidden="true">Universe</span>
           </Link>
           {current ? (
             <Link className={`nav-link nav-sub${active === "token" ? " active" : ""}`} href={`/tokens/${current.id}`} aria-current={active === "token" ? "page" : undefined}>
@@ -48,7 +49,13 @@ export function AppShell({ active, current, movers, children }: { active: "unive
           <p>Research data only. Not investment advice.</p>
         </div>
       </aside>
-      <main className="main-area">{children}</main>
+      <main className="main-area" id="main-content" tabIndex={-1}>
+        <header className="workspace-bar">
+          <div className="workspace-location"><span className="workspace-mark" aria-hidden="true">TS</span><span>Research workspace</span><span className="workspace-divider" aria-hidden="true">/</span><strong>{current?.name ?? "Overview"}</strong></div>
+          <span className="workspace-caption">Clarity in a world of noise.</span>
+        </header>
+        {children}
+      </main>
     </div>
   );
 }

@@ -144,14 +144,14 @@ test("volume formatting is compact with at most three significant digits", () =>
   assert.deepEqual([48.2e9, 6.4e9, 842e6, 95.3e6, 0].map(formatVolumeCompact), ["$48.2B", "$6.4B", "$842M", "$95.3M", "$0"]);
 });
 
-test("sidebar: labels, neutral volume styling, profile links; Research navigation hidden on desktop only", () => {
+test("sidebar: labels, neutral volume styling, profile links; Research navigation available at every screen size", () => {
   const component = source("src/components/SidebarMovers.tsx");
   for (const label of ["24H Movers", "Top gainers", "Top losers", "24H Active", "Top active", "Top inactive"]) assert.ok(component.includes(label), label);
   assert.equal((component.match(/href=\{`\/tokens\/\$\{(mover|row)\.id\}`\}/g) ?? []).length, 2, "both row types link to the Token Profile");
   assert.match(component, /className="mover-change mover-volume"/);
   assert.doesNotMatch(component.slice(component.indexOf("function VolumeList")), /mover-up|mover-down|tone-/, "volume rows are not coloured as gains or losses");
   const css = source("src/app/globals.css");
-  assert.match(css, /\n\.sidebar-nav \{ display: none;/, "desktop: no Research navigation");
+  assert.match(css, /\n\.sidebar-nav \{ display: grid;/, "desktop: Research navigation remains available");
   const tablet = css.slice(css.indexOf("@media (max-width: 1024px)"));
   assert.match(tablet, /\.sidebar-nav \{ display: flex;/, "tablet/mobile top bar keeps its navigation");
   assert.match(css, /\.mover-volume \{ color: var\(--ink\); \}/);
