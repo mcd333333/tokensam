@@ -6,7 +6,10 @@ import {
   getUnmappedGeckoTerminalTokens,
   normalizeGeckoTerminalToken,
   selectPrimaryPool,
+  storedGeckoTerminalPool,
 } from "../src/lib/providers/geckoterminal.ts";
+import { readGeckoTerminalPools } from "../src/lib/data/live-data.ts";
+import { createFakeSupabase } from "./support/fake-supabase.mjs";
 import { geckoTerminalTokenMappings } from "../src/data/geckoterminal-token-mappings.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 
@@ -200,6 +203,59 @@ test("a large Retry-After above the cooldown floor is honored as-is", async () =
   });
   await provider.fetchSnapshots([aave]);
   assert.deepEqual(delays, [25_000]);
+});
+
+test("the stored pool payload keeps only what the token page reads, plus identity context", () => {
+  const full = pool({
+    id: "eth_0xpool-low",
+    attributes: { ...pool().attributes, address: "0xPool-Low", reserve_in_usd: "123456.5", volume_usd: { h24: "777.5", h6: "10", h1: "1" }, transactions: { h24: { buys: 3, sells: 4 } }, price_change_percentage: { h24: "5" } },
+  });
+  const stored = storedGeckoTerminalPool(full);
+  assert.deepEqual(Object.keys(stored.attributes).sort(), ["address", "name", "pool_created_at", "reserve_in_usd", "token_price_usd", "volume_usd"]);
+  assert.deepEqual(stored.attributes.volume_usd, { h24: "777.5" }, "only the 24 h volume the page reads");
+  assert.equal(stored.attributes.address, "0xPool-Low");
+  assert.equal(stored.attributes.reserve_in_usd, "123456.5", "values keep their original string form");
+  assert.ok(JSON.stringify(stored).length < JSON.stringify(full).length / 2, "the stored pool is much smaller than the full one");
+  assert.equal(storedGeckoTerminalPool({}).attributes.volume_usd.h24, null, "a pool with missing fields stores nulls, not a crash");
+});
+
+test("the stored payload is the trimmed pools, while every metric and pair still comes from the full response", () => {
+  const full = pool({ attributes: { ...pool().attributes, address: "0xpool-full", reserve_in_usd: "9000", volume_usd: { h24: "1200" }, transactions: { h24: { buys: 5, sells: 6 } } } });
+  const snapshot = normalizeGeckoTerminalToken(aave, [full], collectedAt);
+  assert.equal(snapshot.rawPayload.providerPools.length, 1);
+  assert.equal(snapshot.rawPayload.providerPools[0].attributes.transactions, undefined, "unread fields are not stored");
+  assert.equal(snapshot.observations.find((item) => item.metricId === "transactions_24h_count")?.value, 11, "transaction counts still come from the full pool");
+  assert.equal(snapshot.observations.find((item) => item.metricId === "liquidity_usd")?.value, 9000);
+  assert.equal(snapshot.providerPairs.length, 1);
+});
+
+test("the token page's pool list is identical whether the stored payload is full or trimmed", async () => {
+  const pools = [
+    pool({ id: "eth_0xaaa", attributes: { ...pool().attributes, address: "0xAAA", reserve_in_usd: "50000", volume_usd: { h24: "4000", h6: "1" }, token_price_usd: "11", transactions: { h24: { buys: 9, sells: 8 } } } }),
+    pool({ id: "eth_0xbbb", attributes: { ...pool().attributes, address: "0xbbb", reserve_in_usd: null, volume_usd: {}, token_price_usd: "10.4" } }),
+    pool({ id: "eth_0xccc", attributes: { ...pool().attributes, address: "0xccc", reserve_in_usd: 1200.5, volume_usd: { h24: 33 }, token_price_usd: null } }),
+  ];
+  const pairs = [
+    { provider_id: "geckoterminal", token_id: "aave-aave", pair_address: "0xaaa", dex_id: "uniswap_v3", pair_created_at: "2023-01-01T00:00:00Z" },
+    { provider_id: "geckoterminal", token_id: "aave-aave", pair_address: "0xBBB", dex_id: "sushiswap", pair_created_at: null },
+    { provider_id: "geckoterminal", token_id: "aave-aave", pair_address: "0xccc", dex_id: null, pair_created_at: "2024-02-02T00:00:00Z" },
+    { provider_id: "geckoterminal", token_id: "aave-aave", pair_address: "0xnot-in-payload", dex_id: "curve", pair_created_at: null },
+  ];
+  const read = async (providerPools) => {
+    const db = createFakeSupabase({ seed: {
+      provider_pairs: pairs,
+      raw_provider_records: [{ id: 1, provider_id: "geckoterminal", token_id: "aave-aave", chain_id: "ethereum", collected_at: collectedAt, excluded_reason: null, payload: { providerPools } }],
+    } });
+    return readGeckoTerminalPools(db.client, "aave-aave");
+  };
+
+  const fromFull = await read(pools);
+  const fromTrimmed = await read(pools.map(storedGeckoTerminalPool));
+  assert.deepEqual(fromTrimmed, fromFull);
+  assert.equal(fromFull.pools.length, 4);
+  assert.equal(fromFull.pools.find((item) => item.pairAddress === "0xaaa")?.liquidityUsd, 50000, "the full path really read the values being compared");
+  assert.equal(fromFull.pools.find((item) => item.pairAddress === "0xccc")?.volume24hUsd, 33);
+  assert.equal(fromFull.pools.find((item) => item.pairAddress === "0xnot-in-payload")?.liquidityUsd, null);
 });
 
 let failures = 0;

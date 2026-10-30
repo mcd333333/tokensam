@@ -733,7 +733,7 @@ type GeckoTerminalRawPool = {
  * already preserved in `raw_provider_records` and matched by pool address.
  * Optional: a failed read leaves pools empty rather than failing the profile.
  */
-async function readGeckoTerminalPools(
+export async function readGeckoTerminalPools(
   client: SupabaseAdminClient,
   tokenId: string,
 ): Promise<{ dexes: string[]; pools: OnchainMarketsData["pools"]; collectedAt: string | null }> {

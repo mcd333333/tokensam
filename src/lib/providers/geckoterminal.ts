@@ -201,6 +201,30 @@ export function selectPrimaryPool(asset: GeckoTerminalAsset, pools: GeckoTermina
   return [...(basePools.length > 0 ? basePools : matched)].sort(comparePools)[0] ?? null;
 }
 
+/**
+ * What is stored in raw_provider_records.payload for each matched pool. The full pool (~1.9 KB
+ * uncompressed, up to ~20 per token) made this the largest payload in that table: ~26 MB of the
+ * database for a two-day buffer. The only reader of a stored GeckoTerminal payload is
+ * readGeckoTerminalPools in src/lib/data/live-data.ts, which matches pools by `address` and reads
+ * `reserve_in_usd`, `volume_usd.h24` and `token_price_usd`. Every metric and every provider_pairs row
+ * is computed from the full response in memory before this is stored, so nothing else is needed.
+ * `id`, `name` and `pool_created_at` stay as cheap identity/debug context.
+ */
+export function storedGeckoTerminalPool(pool: GeckoTerminalPool): Record<string, unknown> {
+  const attributes = pool.attributes ?? {};
+  return {
+    id: pool.id ?? null,
+    attributes: {
+      address: attributes.address ?? null,
+      name: attributes.name ?? null,
+      pool_created_at: attributes.pool_created_at ?? null,
+      reserve_in_usd: attributes.reserve_in_usd ?? null,
+      token_price_usd: attributes.token_price_usd ?? null,
+      volume_usd: { h24: attributes.volume_usd?.h24 ?? null },
+    },
+  };
+}
+
 export function normalizeGeckoTerminalToken(
   asset: GeckoTerminalAsset,
   providerPools: GeckoTerminalPool[],
@@ -240,7 +264,7 @@ export function normalizeGeckoTerminalToken(
       requestedTokenAddress: asset.tokenAddress,
       identityNote: asset.identityNote,
       selection: "All exact network/address pool matches retained (page 1); primary base-token pool selected by USD liquidity descending, 24-hour volume descending, then pool address ascending.",
-      providerPools: matchedPools,
+      providerPools: matchedPools.map(storedGeckoTerminalPool),
     },
     observations,
     providerPairs: matchedPools.map((pool) => poolMapping(asset, pool, collectedAt)),
