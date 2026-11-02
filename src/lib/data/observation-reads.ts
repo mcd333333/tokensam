@@ -199,10 +199,10 @@ export function mergeById<T extends { id: number }>(...sets: T[][]): T[] {
  * migration not being applied yet, so the caller falls back to the paged read and the page still loads.
  * Paged only as a guard: PostgREST silently truncates a response at 1,000 rows.
  */
-async function readRecentViaRpc<T>(client: SupabaseAdminClient, tokenIds: string[], metricIds: string[], since: string): Promise<{ rows: T[]; missing: boolean } | null> {
+async function readRecentViaRpc<T>(client: SupabaseAdminClient, tokenIds: string[], metricIds: string[], since: string, providerIds: string[] = PROVIDERS): Promise<{ rows: T[]; missing: boolean } | null> {
   try {
     return await readPages<T>((from, to) => client.rpc("dashboard_latest_observations", {
-      p_token_ids: tokenIds, p_providers: PROVIDERS, p_metrics: metricIds, p_since: since,
+      p_token_ids: tokenIds, p_providers: providerIds, p_metrics: metricIds, p_since: since,
     }).range(from, to), "read recent observations (rpc)");
   } catch (error) {
     console.error("dashboard_latest_observations failed; falling back to the paged read:", error);
@@ -237,15 +237,21 @@ export async function readLatestObservations<T extends Row>(
       .order("token_id").order("provider_id").order("metric_id")
       .order("observed_at", { ascending: false }).order("collected_at", { ascending: false }).order("id", { ascending: false })
       .range(from, to)), "read recent observations");
+    const readTodayPaged = () => readPages<T>((from, to) => observationRead(client, (relation) => client.from(relation)
+      .select(COLUMNS).in("token_id", batch).eq("provider_id", "coingecko").in("metric_id", COINGECKO_DAILY_METRICS)
+      .is("excluded_reason", null).gte("observed_at", utcToday.toISOString()).lt("observed_at", tomorrow.toISOString())
+      .order("token_id").order("metric_id").order("observed_at", { ascending: false }).order("id", { ascending: false })
+      .range(from, to)), "read today's CoinGecko daily snapshots");
     const [recent, todaySnapshots, aggregates] = await Promise.all([
       options.metricIds
         ? readRecentViaRpc<T>(client, batch, options.metricIds, since).then((rows) => rows ?? readRecentPaged())
         : readRecentPaged(),
-      readPages<T>((from, to) => observationRead(client, (relation) => client.from(relation)
-        .select(COLUMNS).in("token_id", batch).eq("provider_id", "coingecko").in("metric_id", COINGECKO_DAILY_METRICS)
-        .is("excluded_reason", null).gte("observed_at", utcToday.toISOString()).lt("observed_at", tomorrow.toISOString())
-        .order("token_id").order("metric_id").order("observed_at", { ascending: false }).order("id", { ascending: false })
-        .range(from, to)), "read today's CoinGecko daily snapshots"),
+      // Only the newest row per token/metric survives latestPerMetric below, so with metricIds the RPC returns
+      // exactly that instead of paging every row of today (15k+ rows per 50 tokens by evening, re-sorted on each
+      // offset page: that read timed out and dropped the whole batch from the dashboard).
+      options.metricIds
+        ? readRecentViaRpc<T>(client, batch, COINGECKO_DAILY_METRICS, utcToday.toISOString(), ["coingecko"]).then((rows) => rows ?? readTodayPaged())
+        : readTodayPaged(),
       readPages<DailyAggregateRow>((from, to) => client.from("latest_token_metric_daily_aggregates")
         .select("id,token_id,chain_id,metric_id,provider_id,utc_day,value,status,source_observation_count,valid_value_count,aggregated_at,aggregation_method,first_source_observed_at,last_source_observed_at")
         .in("token_id", batch).eq("provider_id", "coingecko").in("metric_id", COINGECKO_DAILY_METRICS)

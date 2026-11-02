@@ -238,9 +238,11 @@ test("RPC path returns the same rows as the paged read for the displayed metrics
 
   assert.deepEqual(actual, expected);
   assert.deepEqual(actual, [2, 4, 5], "newest per key, not the highest id");
-  assert.equal(seen.length, 1, "one RPC call for a batch of tokens");
-  assert.equal(seen[0].name, "dashboard_latest_observations");
+  assert.equal(seen.length, 2, "two RPC calls per batch: the 6-hour window and today's CoinGecko snapshot metrics");
+  assert.ok(seen.every((call) => call.name === "dashboard_latest_observations"));
   assert.deepEqual(seen[0].params.p_metrics, DISPLAYED);
+  assert.deepEqual(seen[1].params.p_providers, ["coingecko"], "today's snapshot read is CoinGecko only");
+  assert.ok(seen[1].params.p_metrics.includes("market_cap_usd"));
 });
 
 test("RPC path falls back to the paged read when the function errors", async () => {
@@ -275,6 +277,24 @@ test("RPC path pages past PostgREST's 1,000-row response cap instead of truncati
 
   const read = await readLatestObservations(db.client, ["token-a"], { metricIds: metrics });
   assert.equal(read.length, 1_500);
+});
+
+test("today's snapshot metrics come from the RPC, so a deep day of rows is never paged", async () => {
+  // 1,200 rows for one token/metric today: the paged read would need two offset pages and re-sort them each time.
+  const base = Date.now() - 60 * 60_000;
+  const rows = Array.from({ length: 1_200 }, (_, index) => observation(index + 1, "token-a", "coingecko", "market_cap_usd", new Date(base + index * 1_000).toISOString()));
+  const db = createFakeSupabase({ seed: { token_metric_observations: [] }, views: false });
+  const seen = [];
+  db.client.rpc = fakeLatestRpc(rows, seen);
+  const originalFrom = db.client.from;
+  const tables = [];
+  db.client.from = (table) => { tables.push(table); return originalFrom(table); };
+
+  const read = await readLatestObservations(db.client, ["token-a"], { metricIds: ["market_cap_usd"] });
+  const marketCap = read.filter((row) => row.metric_id === "market_cap_usd");
+  assert.equal(marketCap.length, 1, "one newest row per token/metric");
+  assert.equal(marketCap[0].id, 1_200, "the newest observation of the day");
+  assert.ok(!tables.includes("token_metric_observations") && !tables.includes("token_metric_observations_resolved"), "no paged read of today's rows is issued");
 });
 
 let failures = 0;
