@@ -17,9 +17,14 @@ export const MAX_GAP_REPAIR_TOKENS = 10;
 // A real outage (e.g. the Cloudflare Worker scheduler going down for hours) leaves a
 // partial-day hole that get_coingecko_daily_gaps cannot see: as long as some data
 // exists on both the day the outage started and the day it ended, neither day reads
-// as "missing". This threshold is well above CoinGecko's normal ~1h observation
-// cadence, so only a genuine multi-hour outage trips it, not ordinary polling jitter.
-export const INTRADAY_GAP_HOURS = 6;
+// as "missing". This threshold is above CoinGecko's normal 15-minute collection cadence
+// (and any single missed tick), so only a real outage trips it, not ordinary polling jitter.
+// It was 6 h until 2026-11-05, when a ~3 h Supabase stall (22:51-01:50 UTC) swallowed the UTC
+// midnight for all 154 tokens and went unrepaired: the technical indicators need an unbroken
+// run of midnight samples, so any gap that swallows one matters, however short. 1.5 h is just
+// over the +-30 min midnight tolerance on both sides plus a missed tick; run against the last
+// 37 days of production it flags only that outage.
+export const INTRADAY_GAP_HOURS = 1.5;
 
 const PRICE_METRIC = "price_usd";
 const OTHER_METRICS = ["market_cap_usd", "volume_24h_usd"];
