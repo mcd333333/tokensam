@@ -42,17 +42,8 @@ export async function acquireGeckoTerminalSyncLock(
   now: Date,
   leaseMs: number,
 ): Promise<GeckoTerminalRunOwnership | null> {
-  // Release a lock left behind by a run that crashed, was killed mid-flight, or
-  // stopped heartbeating (see renewGeckoTerminalSyncLock); its row is preserved
-  // as an auditable "abandoned" record, never deleted.
-  const { error: expireError } = await client.from("geckoterminal_sync_runs")
-    .update({ status: "failed", finished_at: now.toISOString(), error: "Run abandoned: its lease expired before it finished." })
-    .eq("status", "running")
-    .lt("lease_expires_at", now.toISOString());
-  fail(expireError, "expire abandoned GeckoTerminal sync runs");
-
   const lockToken = randomUUID();
-  const { data, error } = await client.from("geckoterminal_sync_runs")
+  const insertRun = () => client.from("geckoterminal_sync_runs")
     .insert({
       trigger, status: "running", started_at: now.toISOString(),
       lease_expires_at: new Date(now.getTime() + leaseMs).toISOString(),
@@ -60,7 +51,19 @@ export async function acquireGeckoTerminalSyncLock(
     })
     .select("id")
     .single();
-  // The partial unique index permits a single 'running' row: a conflict means busy.
+  let { data, error } = await insertRun();
+  // The partial unique index permits a single 'running' row: a conflict means another run holds the lock, or that a
+  // run crashed, was killed mid-flight or stopped heartbeating (see renewGeckoTerminalSyncLock) and left its row behind.
+  // Only then release the expired lock (its row is preserved as an auditable "abandoned" record, never deleted) and retry
+  // once. Sweeping on every acquire cost an extra API call per slice for a case that is almost never true.
+  if (error && (error as { code?: string }).code === UNIQUE_VIOLATION) {
+    const { error: expireError } = await client.from("geckoterminal_sync_runs")
+      .update({ status: "failed", finished_at: now.toISOString(), error: "Run abandoned: its lease expired before it finished." })
+      .eq("status", "running")
+      .lt("lease_expires_at", now.toISOString());
+    fail(expireError, "expire abandoned GeckoTerminal sync runs");
+    ({ data, error } = await insertRun());
+  }
   if (error && (error as { code?: string }).code === UNIQUE_VIOLATION) return null;
   fail(error, "start GeckoTerminal sync run");
   return { runId: (data as { id: number }).id, lockToken };

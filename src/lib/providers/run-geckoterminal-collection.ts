@@ -38,6 +38,23 @@ const LOCK_LEASE_MS = 15 * 60 * 1000;
 // (see PROCESSING_BUDGET_MS in src/app/api/cron/geckoterminal/route.ts).
 const GAP_REPAIR_MIN_BUDGET_MS = GECKOTERMINAL_MAX_GAP_REPAIR_TOKENS * MIN_REQUEST_INTERVAL_MS + 10_000;
 
+/**
+ * Slice-mode caches (see `sliceCacheScope` below). Each slice is its own request, so these live at module scope and
+ * survive only while a serverless instance stays warm; a cold instance simply repeats the work once. They exist
+ * because every slice used to repeat ~6 Supabase calls whose answers do not change (the schema check and a
+ * static mapping upsert), which doubled the project's API log volume. Both are keyed by `sliceCacheScope`, so a
+ * caller that does not pass one (tests, the full-sweep route) gets the original uncached behaviour.
+ */
+const SLICE_SCHEMA_TTL_MS = 10 * 60 * 1000;
+const SLICE_MAPPING_TTL_MS = 6 * 60 * 60 * 1000;
+const sliceSchemaVerifiedAt = new Map<string, number>();
+const sliceMappingsWritten = new Map<string, { since: number; tokenIds: Set<string> }>();
+
+export function resetGeckoTerminalSliceCaches(): void {
+  sliceSchemaVerifiedAt.clear();
+  sliceMappingsWritten.clear();
+}
+
 function throwOnSupabaseError(error: { message: string } | null, action: string): void {
   if (error) throw new Error(`Supabase ${action} failed: ${error.message}`);
 }
@@ -189,6 +206,8 @@ export async function runGeckoTerminalScheduledCollection(
     startTokenId?: string | null;
     /** Collect only this many tokens from the rotation cursor and advance it by that many (see the slice comment below). */
     maxTokens?: number;
+    /** With maxTokens: remember the schema check (10 min) and written mappings (6 h) per warm instance under this key. */
+    sliceCacheScope?: string;
     /** Forwarded to fetchGeckoTerminalSnapshotsTolerant; see its own doc comment. */
     onHeartbeat?: () => Promise<boolean>;
     heartbeatIntervalMs?: number;
@@ -197,7 +216,11 @@ export async function runGeckoTerminalScheduledCollection(
   } = {},
 ): Promise<GeckoTerminalScheduledResult & { ownershipLostDuringCollection: boolean }> {
   const startedAt = Date.now();
-  await verifySchema(client);
+  const cacheScope = options.maxTokens !== undefined ? options.sliceCacheScope : undefined;
+  if (cacheScope === undefined || Date.now() - (sliceSchemaVerifiedAt.get(cacheScope) ?? 0) > SLICE_SCHEMA_TTL_MS) {
+    await verifySchema(client);
+    if (cacheScope !== undefined) sliceSchemaVerifiedAt.set(cacheScope, Date.now());
+  }
   const activeCanonicalTokenIds = new Set(canonicalTokens.map((token) => token.id));
   const assets = configuredGeckoTerminalAssets().filter(
     (asset) => activeCanonicalTokenIds.has(asset.tokenId) && (!options.tokenIds || options.tokenIds.includes(asset.tokenId)),
@@ -247,7 +270,19 @@ export async function runGeckoTerminalScheduledCollection(
   // Only tokens that actually returned a snapshot this run get their mapping refreshed;
   // a token that failed or was skipped keeps whatever mapping it already had.
   const succeededTokenIds = new Set(snapshots.map((snapshot) => snapshot.asset.tokenId));
-  await upsertGeckoTerminalMappings(client, assets.filter((asset) => succeededTokenIds.has(asset.tokenId)));
+  let mappingsToWrite = assets.filter((asset) => succeededTokenIds.has(asset.tokenId));
+  let writtenMappings: { since: number; tokenIds: Set<string> } | undefined;
+  if (cacheScope !== undefined) {
+    writtenMappings = sliceMappingsWritten.get(cacheScope);
+    if (!writtenMappings || Date.now() - writtenMappings.since > SLICE_MAPPING_TTL_MS) {
+      writtenMappings = { since: Date.now(), tokenIds: new Set() };
+      sliceMappingsWritten.set(cacheScope, writtenMappings);
+    }
+    // The mapping values come from the static config, so a token already written by this instance is identical.
+    mappingsToWrite = mappingsToWrite.filter((asset) => !writtenMappings!.tokenIds.has(asset.tokenId));
+  }
+  await upsertGeckoTerminalMappings(client, mappingsToWrite);
+  for (const asset of mappingsToWrite) writtenMappings?.tokenIds.add(asset.tokenId);
 
   // Every successful snapshot is persisted, even if others in the same run failed or were skipped.
   const persisted = snapshots.length > 0

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { configuredGeckoTerminalAssets, fetchGeckoTerminalSnapshotsTolerant } from "../src/lib/providers/geckoterminal.ts";
-import { runGeckoTerminalCollection, runGeckoTerminalScheduledCollection } from "../src/lib/providers/run-geckoterminal-collection.ts";
+import { resetGeckoTerminalSliceCaches, runGeckoTerminalCollection, runGeckoTerminalScheduledCollection } from "../src/lib/providers/run-geckoterminal-collection.ts";
 import {
   acquireGeckoTerminalSyncLock,
   finishGeckoTerminalSyncLock,
@@ -503,6 +503,54 @@ test("slice mode: one token per call, no pacing sleep, no gap repair, cursor adv
   assert.equal(slept, 0, "pacing belongs to the caller in slice mode");
   assert.equal(new Set(seen.slice(0, 3)).size, 3, "three consecutive slices cover three distinct tokens");
   assert.equal(seen[3], seen[0], "the fourth slice wraps back to the first token");
+});
+
+test("slice mode with a cache scope skips the repeated schema check and unchanged mapping write, and nothing else changes", async () => {
+  resetGeckoTerminalSliceCaches();
+  const tokenIds = [aave.tokenId, jupiter.tokenId, uni.tokenId];
+  const fetchImpl = fixedResponse({ data: [pool({ baseAddress: aave.tokenAddress })] });
+
+  async function runSlices(sliceCacheScope) {
+    const db = createFakeSupabase({ seed: baseSeed() });
+    const perCall = [];
+    for (let call = 0; call < 2; call += 1) {
+      const before = db.calls.length;
+      const { runId, lockToken } = await acquireGeckoTerminalSyncLock(db.client, "scheduled", new Date(Date.UTC(2026, 9, 1, 0, call)), 15 * 60 * 1000);
+      const result = await runGeckoTerminalScheduledCollection(db.client, { tokenIds, fetchImpl, sleep: noSleep, maxTokens: 1, startTokenId: tokenIds[0], sliceCacheScope });
+      await finishGeckoTerminalSyncLock(db.client, runId, lockToken, "succeeded", new Date(Date.UTC(2026, 9, 1, 0, call, 30)), result, null);
+      perCall.push(db.calls.slice(before).map((entry) => `${entry.table}:${entry.op}`));
+    }
+    return { perCall, db };
+  }
+
+  const uncached = await runSlices(undefined);
+  const cached = await runSlices("test-scope");
+  const count = (calls, table) => calls.filter((entry) => entry.startsWith(`${table}:`)).length;
+
+  assert.equal(count(uncached.perCall[1], "metric_definitions"), 1, "without a scope every slice still checks the schema");
+  assert.equal(count(cached.perCall[0], "metric_definitions"), 1, "the first slice checks the schema");
+  assert.equal(count(cached.perCall[1], "metric_definitions"), 0, "the second slice reuses the schema check");
+  assert.equal(count(cached.perCall[1], "data_providers"), 0);
+  assert.ok(count(cached.perCall[1], "provider_token_mappings") < count(cached.perCall[0], "provider_token_mappings"), "an unchanged mapping is not written again");
+  assert.ok(cached.perCall[1].length < uncached.perCall[1].length, "the cached slice makes fewer API calls");
+
+  // The stored data is identical either way: same observations, same mappings, same run rows.
+  for (const table of ["token_metric_observations", "provider_token_mappings", "provider_pairs", "geckoterminal_sync_runs"]) {
+    assert.equal(cached.db.rows(table).length, uncached.db.rows(table).length, `${table} holds the same number of rows`);
+  }
+  resetGeckoTerminalSliceCaches();
+});
+
+test("a crashed run's expired lock is still released: the sweep now runs only when the insert is refused", async () => {
+  const db = createFakeSupabase({ seed: { geckoterminal_sync_runs: [] } });
+  const first = await acquireGeckoTerminalSyncLock(db.client, "scheduled", new Date("2026-10-01T00:00:00Z"), 60_000);
+  assert.ok(first);
+  const sweeps = () => db.calls.filter((entry) => entry.table === "geckoterminal_sync_runs" && entry.op === "update").length;
+  assert.equal(sweeps(), 0, "a free lock needs no sweep");
+  assert.equal(await acquireGeckoTerminalSyncLock(db.client, "scheduled", new Date("2026-10-01T00:00:30Z"), 60_000), null, "a live lock is still refused");
+  const second = await acquireGeckoTerminalSyncLock(db.client, "scheduled", new Date("2026-10-01T00:05:00Z"), 60_000);
+  assert.ok(second, "an expired lock is swept and the acquire succeeds on retry");
+  assert.equal(db.rows("geckoterminal_sync_runs").find((row) => row.id === first.runId).status, "failed");
 });
 
 // ---- Heartbeat / ownership during a scheduled collection ----

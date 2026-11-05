@@ -140,6 +140,7 @@ export async function GET(request: Request): Promise<Response> {
     const result = await runGeckoTerminalScheduledCollection(client, {
       deadlineAt: routeStart + (slice === null ? PROCESSING_BUDGET_MS : SLICE_BUDGET_MS),
       maxTokens: slice ?? undefined,
+      sliceCacheScope: slice !== null ? "geckoterminal-slice" : undefined,
       minRequestIntervalMs: positiveNumber(process.env.GECKOTERMINAL_BATCH_DELAY_MS) ?? undefined,
       onHeartbeat: () => renewGeckoTerminalSyncLock(client, runId, lockToken, new Date(), LOCK_LEASE_MS),
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
