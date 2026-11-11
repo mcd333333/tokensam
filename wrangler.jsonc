@@ -1,16 +1,26 @@
 {
-  // The Next.js app, built for Cloudflare Workers with OpenNext (see open-next.config.ts).
-  // The 5-minute scheduler is a separate Worker: cloudflare/refresh-scheduler/.
+  // One Worker for the whole project: the OpenNext-built Next.js app plus the 5-minute scheduler
+  // (see cloudflare/worker-entry.ts). The name matches the existing scheduler Worker so deploying
+  // this replaces it in place and keeps its secrets (CRON_SECRET, COINGECKO_API_KEY, RESEND_API_KEY).
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tokensam",
-  "main": ".open-next/worker.js",
+  "name": "token-samurai-refresh-scheduler",
+  "main": "cloudflare/worker-entry.ts",
   "compatibility_date": "2026-11-01",
   // nodejs_compat provides node:crypto etc. and, with this compatibility date, fills process.env
-  // from the Worker's variables and secrets, which is where this app reads all of its config.
+  // from the Worker's variables and secrets, which is where the app reads all of its config.
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
   "images": { "binding": "IMAGES" },
-  "observability": { "enabled": true },
+  // Fires every 5 minutes: refresh, GeckoTerminal slices and the daily exchange volumes.
+  "triggers": { "crons": ["*/5 * * * *"] },
+  // Keep variables added in the dashboard (Supabase, AI keys, ...) across deploys.
+  "keep_vars": true,
+  "vars": {
+    // The scheduler calls the app in-process; this only completes the request URLs it builds.
+    "REFRESH_URL": "https://app.internal",
+    "COINGECKO_API_PLAN": "demo"
+  },
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": true, "persist": true } },
   // Many small Supabase calls per request: run near the database rather than the visitor.
   "placement": { "mode": "smart" },
   // The cron routes (refresh, retention) parse and write a lot of rows; the default CPU limit is far too low.

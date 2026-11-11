@@ -4,35 +4,31 @@ The Next.js app builds for Cloudflare Workers with OpenNext (`@opennextjs/cloudf
 raised to 16.4.6 because the adapter requires 16.4.5 or newer. Requires the Workers Paid plan: the
 free plan's 10 ms CPU and 50-subrequest limits cannot run the pages or the cron routes.
 
-Two Workers, deployed separately:
+**One Worker does everything.** `wrangler.jsonc` (repo root) deploys the existing
+`token-samurai-refresh-scheduler` Worker in place: `cloudflare/worker-entry.ts` serves the website and
+`/api/*` through the OpenNext build, keeps the scheduler's `/binance-prices` and `/coingecko-proxy`
+routes, and runs the 5-minute cron, which calls the app's `/api/cron/*` routes in-process. Its existing
+secrets (`CRON_SECRET`, `COINGECKO_API_KEY`, `RESEND_API_KEY`) are kept, and `keep_vars` preserves
+variables added in the dashboard.
 
-| Worker | Source | Role |
-|---|---|---|
-| `tokensam` | repo root (`wrangler.jsonc`, `open-next.config.ts`) | the website and `/api/*` routes |
-| `token-samurai-refresh-scheduler` | `cloudflare/refresh-scheduler/` | 5-minute cron that calls the app's cron routes; also serves `/binance-prices` and `/coingecko-proxy` |
+## Cutover
 
-## One-time setup
-
-1. **Create the app Worker from the repo** (Workers & Pages, Create, Import a repository):
-   - Root directory: `/`
+1. **Change the Worker's build settings** (Workers & Pages, `token-samurai-refresh-scheduler`, Settings, Build):
+   - Git branch: `cloudflare-migration` (switch back to `main` after merging)
+   - Root directory: `/` (was `cloudflare/refresh-scheduler`)
    - Build command: `pnpm install --frozen-lockfile && pnpm exec opennextjs-cloudflare build`
-   - Deploy command: `pnpm exec opennextjs-cloudflare deploy`
-   - Worker name: `tokensam` (must match `wrangler.jsonc`)
-   - Build watch paths (so the scheduler's own folder does not rebuild it): include `/*`, exclude `cloudflare/*`.
-2. **Set the Worker's variables and secrets** (Settings, Variables and Secrets). Same names as `.env.example`:
-   `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `CRON_SECRET`, `COINGECKO_API_KEY`, `COINGECKO_API_PLAN`,
-   `GECKOTERMINAL_SYNC_ENABLED=true`, the AI provider keys, and any other values the Vercel project had.
-   Leave `COINGECKO_PROXY_URL` **unset**: the app now egresses from Cloudflare, the same network the proxy used.
-3. **Check the app** at `https://tokensam.<your-subdomain>.workers.dev`: the home page, a token profile, and
-   `curl -H "authorization: Bearer $CRON_SECRET" https://.../api/cron/exchanges?slice=1`.
-4. **Point the scheduler at it** in `cloudflare/refresh-scheduler/wrangler.toml`: set `REFRESH_URL` to the new
-   URL and uncomment the `[[services]]` binding (`APP` to `tokensam`), then redeploy the scheduler.
-5. **Verify collection** (new rows in `token_metric_observations`), then retire the Vercel project.
+   - Deploy command: `pnpm exec wrangler deploy`
+2. **Add the variables and secrets the app needs** (Settings, Variables and Secrets), same names as `.env.example`:
+   `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `COINGECKO_API_PLAN`, `GECKOTERMINAL_SYNC_ENABLED=true`, the AI provider
+   keys and any other values the Vercel project had. `CRON_SECRET` and `COINGECKO_API_KEY` already exist here.
+   Leave `COINGECKO_PROXY_URL` unset: the app now egresses from Cloudflare, the same network the proxy used.
+3. **Trigger a build** (push, or Retry deployment). Open the Worker's `workers.dev` URL: the home page and a token profile.
+4. **Verify collection** after a few minutes (new rows in `token_metric_observations`), then retire the Vercel project.
 
 ## Notes
 
 - `process.env` is populated from the Worker's variables and secrets (`nodejs_compat` with this compatibility date).
-- `placement.mode = "smart"` runs the Worker near Supabase (Seoul), since each request makes many small database calls.
+- `placement.mode = "smart"` runs the Worker near Supabase (Seoul); each request makes many small database calls.
 - `limits.cpu_ms = 300000` allows the long refresh and retention routes.
 - Images use the `IMAGES` binding. Local preview: `pnpm cf:preview` with a `.dev.vars` (see `.dev.vars.example`).
-- `vercel.json` is no longer used once the cutover is done.
+- `vercel.json` and the old scheduler-only deploy (`cloudflare/refresh-scheduler/wrangler.toml`) are not used after cutover.

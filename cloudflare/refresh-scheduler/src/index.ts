@@ -4,9 +4,9 @@ export interface Env {
   /** Base URL of the app deployment, e.g. "https://tokensam.<subdomain>.workers.dev" (no trailing slash needed). */
   REFRESH_URL: string;
   /**
-   * Optional service binding to the app Worker ("tokensam", see ../../wrangler.jsonc). When set, the cron
-   * routes are called through it directly instead of over the public URL, so no REFRESH_URL
-   * lookup, DNS or Worker-to-Worker public fetch is involved. REFRESH_URL is then only a label.
+   * In-process binding to the app, injected by ../../worker-entry.ts. When set, the cron routes are
+   * called through it directly instead of over the public URL, so REFRESH_URL only completes the
+   * request URLs. Also usable as a Wrangler service binding for a scheduler-only deploy.
    */
   APP?: { fetch(input: string | Request, init?: RequestInit): Promise<Response> };
   /** Must equal the Vercel deployment's own CRON_SECRET (see src/lib/refresh/auth.ts). Set as a Wrangler secret. */

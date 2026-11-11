@@ -24,17 +24,12 @@ crons = ["*/5 * * * *"]
 # a var: set it with `wrangler secret put COINGECKO_API_KEY` (or the Cloudflare dashboard),
 # never here. It only needs to be the same key already configured as COINGECKO_API_KEY on
 # the Vercel deployment; this Worker never receives that env's value, it holds its own copy.
-# After the app has been deployed as the "tokensam" Worker (repo root, see ../../wrangler.jsonc),
-# point REFRESH_URL at it and enable the service binding below so the cron routes are called
-# directly Worker-to-Worker. The binding must be uncommented only once that Worker exists,
-# otherwise this Worker's deploy fails.
+# LEGACY: the repo root's wrangler.jsonc now deploys this Worker (same name) together with the
+# app (see ../worker-entry.ts and docs/cloudflare-migration.md); the scheduler runs inside that
+# build and calls the app in-process. This file is only used for a scheduler-only deploy.
 [vars]
 REFRESH_URL = "https://tokensam.vercel.app"
 COINGECKO_API_PLAN = "demo"
-
-# [[services]]
-# binding = "APP"
-# service = "tokensam"
 
 # Enabled via the dashboard while diagnosing the /coingecko-proxy CoinGecko 403 (needed to
 # see this Worker's own console.error output, e.g. the CF-Ray diagnostic in src/index.ts).
