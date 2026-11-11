@@ -25,6 +25,15 @@ variables added in the dashboard.
 3. **Trigger a build** (push, or Retry deployment). Open the Worker's `workers.dev` URL: the home page and a token profile.
 4. **Verify collection** after a few minutes (new rows in `token_metric_observations`), then retire the Vercel project.
 
+## Dashboard gotchas
+
+- The Build section's "Variables and secrets" box is for build-time variables only. The app's variables go under
+  Runtime, Variables and Secrets. The build itself needs none.
+- Saving build settings does not start a build, and "Retry" on an old deployment rebuilds that old commit. Push a
+  commit to the production branch to build the new code.
+- The "update your Wrangler configuration" banner is informational: `keep_vars` keeps dashboard-only variables across
+  deploys, and secrets must not be committed.
+
 ## Notes
 
 - `process.env` is populated from the Worker's variables and secrets (`nodejs_compat` with this compatibility date).
