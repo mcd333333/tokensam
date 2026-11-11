@@ -1,0 +1,18 @@
+{
+  // The Next.js app, built for Cloudflare Workers with OpenNext (see open-next.config.ts).
+  // The 5-minute scheduler is a separate Worker: cloudflare/refresh-scheduler/.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tokensam",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-11-01",
+  // nodejs_compat provides node:crypto etc. and, with this compatibility date, fills process.env
+  // from the Worker's variables and secrets, which is where this app reads all of its config.
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "images": { "binding": "IMAGES" },
+  "observability": { "enabled": true },
+  // Many small Supabase calls per request: run near the database rather than the visitor.
+  "placement": { "mode": "smart" },
+  // The cron routes (refresh, retention) parse and write a lot of rows; the default CPU limit is far too low.
+  "limits": { "cpu_ms": 300000 }
+}

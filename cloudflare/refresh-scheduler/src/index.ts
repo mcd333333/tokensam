@@ -1,8 +1,14 @@
 import { BINANCE_SYMBOLS } from "./binance-symbols.ts";
 
 export interface Env {
-  /** Base URL of the Vercel deployment, e.g. "https://tokensam.vercel.app" (no trailing slash needed). */
+  /** Base URL of the app deployment, e.g. "https://tokensam.<subdomain>.workers.dev" (no trailing slash needed). */
   REFRESH_URL: string;
+  /**
+   * Optional service binding to the app Worker ("tokensam", see ../../wrangler.jsonc). When set, the cron
+   * routes are called through it directly instead of over the public URL, so no REFRESH_URL
+   * lookup, DNS or Worker-to-Worker public fetch is involved. REFRESH_URL is then only a label.
+   */
+  APP?: { fetch(input: string | Request, init?: RequestInit): Promise<Response> };
   /** Must equal the Vercel deployment's own CRON_SECRET (see src/lib/refresh/auth.ts). Set as a Wrangler secret. */
   CRON_SECRET: string;
   /**
@@ -263,10 +269,13 @@ async function sendQuotaAlert(env: Env, level: string, reasons: string[], usage:
  * routes label the run "scheduled" instead of "manual" (they cannot see Vercel's own
  * `x-vercel-cron-schedule` header from here, since this call is not Vercel Cron itself).
  */
+let appBinding: Env["APP"] = undefined;
+
 async function callRoute(baseUrl: string, path: string, secret: string): Promise<RouteResult> {
   const url = `${baseUrl.replace(/\/$/, "")}${path}`;
   try {
-    const response = await fetch(url, {
+    const send = appBinding ? appBinding.fetch.bind(appBinding) : fetch;
+    const response = await send(url, {
       method: "GET",
       headers: {
         authorization: `Bearer ${secret}`,
@@ -357,6 +366,7 @@ async function runGeckoTerminalSlices(env: Env): Promise<RouteResult> {
  * second, independent path that launches either route out of order.
  */
 async function run(env: Env): Promise<RouteResult[]> {
+  appBinding = env.APP;
   if (!env.REFRESH_URL || !env.CRON_SECRET) {
     console.error("refresh-scheduler: REFRESH_URL and CRON_SECRET must both be configured (see wrangler.toml).");
     return [];

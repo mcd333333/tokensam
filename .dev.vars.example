@@ -1,0 +1,8 @@
+# Copy to .dev.vars for `pnpm cf:preview` (local Workers runtime). In production, set these as the
+# Worker's variables/secrets in the Cloudflare dashboard. Never commit real values.
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+CRON_SECRET=
+COINGECKO_API_KEY=
+COINGECKO_API_PLAN=demo
+GECKOTERMINAL_SYNC_ENABLED=true
