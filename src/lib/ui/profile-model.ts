@@ -21,8 +21,11 @@ export type SectionNote = { title: string; reason: string };
 export type SupplyComposition = { circulatingPct: number; remainingPct: number; barPct: number; circulating: string; maximum: string; symbol: string };
 /** One on-chain pool row for the DEX Markets pool list. */
 export type PoolRow = { id: string; dexLabel: string; pairAddress: string; liquidity: string | null; volume24h: string | null };
+/** One exchange row: its name, share of its group's listed volume and its 24h volume for this token. */
+export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number };
+export type ExchangeGroup = { kind: "cex" | "dex"; title: string; total: string | null; rows: ExchangeRow[] };
 export type SectionId =
-  | "overview" | "market" | "fundamentals" | "tokenomics" | "market-structure" | "dex-markets" | "onchain-identity"
+  | "overview" | "market" | "fundamentals" | "tokenomics" | "market-structure" | "dex-markets" | "exchanges" | "onchain-identity"
   | "history" | "technical" | "analysis" | "sources";
 
 export type ProfileModel = {
@@ -35,6 +38,8 @@ export type ProfileModel = {
   marketStructure: { available: true; scopeLine: string; cards: Card[] } | { available: false; note: SectionNote };
   /** GeckoTerminal on-chain pools: distinct pool-level data (DEX, pool, liquidity, volume), not the DEX Screener aggregate above. */
   dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; pools: PoolRow[] } | { available: false; note: SectionNote };
+  /** Exchange listings (centralised and decentralised) with each exchange's own 24h volume (daily snapshot); omitted when none is stored. */
+  exchanges: { available: true; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
   /** Network + exact contract address for this token's on-chain identity. */
   onchainIdentity: { available: true; network: string; contractAddress: string } | { available: false; note: SectionNote };
   tokenomics: { available: true; items: Card[]; circulatingOfMaxPct: number | null; composition: SupplyComposition | null } | { available: false; note: SectionNote };
@@ -271,6 +276,38 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
     }
   }
 
+  // D3. Exchanges: where the token is listed and its 24h volume on each (CoinGecko tickers, refreshed once a
+  // day), split into centralised and decentralised venues. This covers every token, unlike DEX Markets
+  // above, which needs a GeckoTerminal address mapping and shows individual pools.
+  const exchangeData = data.exchangeVolumes;
+  const exchangeGroups: ExchangeGroup[] = exchangeData
+    ? (["cex", "dex"] as const).flatMap((kind) => {
+      const items = exchangeData.exchanges.filter((item) => item.kind === kind);
+      if (items.length === 0) return [];
+      const total = items.reduce((sum, item) => sum + item.volumeUsd, 0);
+      return [{
+        kind,
+        title: kind === "cex" ? "Centralised exchanges" : "Decentralised exchanges",
+        total: formatUsd(total, true),
+        rows: items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          pairs: item.pairs,
+          volume24h: formatUsd(item.volumeUsd, true) ?? "—",
+          sharePct: total > 0 ? (item.volumeUsd / total) * 100 : 0,
+        })),
+      }];
+    })
+    : [];
+  const exchanges: ProfileModel["exchanges"] = exchangeData && exchangeGroups.length > 0
+    ? {
+      available: true,
+      scopeLine: "Where this token trades, with its own 24-hour trading volume on each exchange, split into centralised and decentralised venues. Updated daily; shares are within each group.",
+      groups: exchangeGroups,
+      asOf: exchangeData.fetchedAt,
+    }
+    : { available: false };
+
   // E. Tokenomics: token-scope supply; a missing maximum is hidden, never labelled "uncapped".
   const supply = (value: number | null) => formatSupply(value) === null ? null : `${formatSupply(value)} ${token.symbol}`;
   // FDV is the token-level value reported in the stored market-data record, never derived here or taken from DEX data.
@@ -357,6 +394,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
     ...(history.available ? [{ id: "history" as const, label: "History" }] : []),
     ...(marketStructure.available ? [{ id: "market-structure" as const, label: "Trading & Liquidity" }] : []),
     ...(dexMarkets.available ? [{ id: "dex-markets" as const, label: "DEX Markets" }] : []),
+    ...(exchanges.available ? [{ id: "exchanges" as const, label: "Exchanges" }] : []),
     ...(onchainIdentity.available ? [{ id: "onchain-identity" as const, label: "On-chain Identity" }] : []),
     // Cross-metric analysis is a subsection of Technical, not its own nav item.
     ...(technical.length > 0 || hasCrossMetric ? [{ id: "technical" as const, label: "Technical" }] : []),
@@ -364,7 +402,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
     { id: "sources", label: "Sources" },
   ];
 
-  return { snapshot, history, fundamentals, marketStructure, dexMarkets, onchainIdentity, tokenomics, technical, divergence, sections, methodology: buildMethodology(data, { protocolMapped, dexMapped }) };
+  return { snapshot, history, fundamentals, marketStructure, dexMarkets, exchanges, onchainIdentity, tokenomics, technical, divergence, sections, methodology: buildMethodology(data, { protocolMapped, dexMapped }) };
 }
 
 function buildMethodology(data: LiveTokenProfileData, mapped: { protocolMapped: boolean; dexMapped: boolean }): Methodology {

@@ -400,11 +400,21 @@ async function run(env: Env): Promise<RouteResult[]> {
     );
   }
 
+  // Daily centralised-exchange volumes: only tokens whose snapshot is >22 h old are fetched (oldest
+  // first, up to 8 per tick, ~2 s pacing inside the route), so after the first ticks of a day this
+  // is a cheap no-op. A hard monthly call cap lives in the route; see /api/cron/exchanges.
+  let exchangesResult: RouteResult | null = null;
+  if (isSuccessfulResponse(refreshResult)) {
+    exchangesResult = await callRoute(env.REFRESH_URL, "/api/cron/exchanges?slice=8", env.CRON_SECRET);
+    if (exchangesResult.error) console.error(`refresh-scheduler: /api/cron/exchanges request failed: ${exchangesResult.error}`);
+    else console.log(`refresh-scheduler: /api/cron/exchanges -> ${exchangesResult.status} ${exchangesResult.body.slice(0, 300)}`);
+  }
+
   // Retention no longer runs from here: its three batch functions and the vacuum manager are
   // scheduled inside Postgres with pg_cron (see supabase/migrations/20261029140000_retention_pg_cron.sql),
   // so it costs no Vercel function invocation. /api/cron/retention remains for manual `?force=1` runs.
 
-  return [refreshResult, ...(geckoTerminalResult ? [geckoTerminalResult] : [])];
+  return [refreshResult, ...(geckoTerminalResult ? [geckoTerminalResult] : []), ...(exchangesResult ? [exchangesResult] : [])];
 }
 
 export default {

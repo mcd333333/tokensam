@@ -172,4 +172,6 @@ export type LiveTokenProfileData = {
   dexActivity: { transactions24h: number | null; buys24h: number | null; sells24h: number | null };
   /** GeckoTerminal on-chain pools and network identity; null when no exact-address mapping exists. */
   onchainMarkets: OnchainMarketsData | null;
+  /** Latest daily exchange 24h volume snapshot (CoinGecko tickers, centralised and decentralised); null/absent when not yet collected. */
+  exchangeVolumes?: { fetchedAt: string; exchanges: { id: string; name: string; kind: "cex" | "dex"; volumeUsd: number; pairs: number }[] } | null;
 };

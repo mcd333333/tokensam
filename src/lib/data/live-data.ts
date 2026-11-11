@@ -733,6 +733,27 @@ type GeckoTerminalRawPool = {
  * already preserved in `raw_provider_records` and matched by pool address.
  * Optional: a failed read leaves pools empty rather than failing the profile.
  */
+/** Latest exchange volume snapshot for a token; optional, so a failed read just omits the section. */
+export async function readExchangeVolumes(
+  client: SupabaseAdminClient,
+  tokenId: string,
+): Promise<NonNullable<LiveTokenProfileData["exchangeVolumes"]> | null> {
+  try {
+    const { data, error } = await client.from("token_exchange_volumes")
+      .select("fetched_at,exchanges").eq("token_id", tokenId).maybeSingle();
+    if (error) throw error;
+    const row = data as { fetched_at?: string; exchanges?: unknown } | null;
+    if (!row?.fetched_at || !Array.isArray(row.exchanges)) return null;
+    const exchanges = (row.exchanges as Record<string, unknown>[])
+      .filter((item) => typeof item?.id === "string" && typeof item?.name === "string" && typeof item?.volumeUsd === "number")
+      .map((item) => ({ id: item.id as string, name: item.name as string, kind: (item.kind === "dex" ? "dex" : "cex") as "cex" | "dex", volumeUsd: item.volumeUsd as number, pairs: typeof item.pairs === "number" ? item.pairs : 0 }));
+    return { fetchedAt: row.fetched_at, exchanges };
+  } catch (error) {
+    console.error(`Exchange volume read failed for ${tokenId} (section omitted):`, error);
+    return null;
+  }
+}
+
 export async function readGeckoTerminalPools(
   client: SupabaseAdminClient,
   tokenId: string,
@@ -919,7 +940,7 @@ async function getLiveTokenProfileUncached(
   if (tokenError) throw tokenError;
   if (!tokenData) return null;
   const tokenRow = tokenData as DbToken;
-  const [chainResult, observations, calculatedResult, definitionResult, mappingResult, logos, supplyHistory, reportedFdv, gtPools] = await Promise.all([
+  const [chainResult, observations, calculatedResult, definitionResult, mappingResult, logos, supplyHistory, reportedFdv, gtPools, exchangeVolumes] = await Promise.all([
     client.from("chains").select("id,name").eq("id", tokenRow.chain_id).maybeSingle(),
     readLatest(client, [tokenId]).then(async (latest) => mergeById(
       latest,
@@ -943,6 +964,7 @@ async function getLiveTokenProfileUncached(
     readReportedFdv(client, [tokenId]),
     // GeckoTerminal pool identity (DEX, address, creation time); optional, so a failed read leaves it empty.
     readGeckoTerminalPools(client, tokenId),
+    readExchangeVolumes(client, tokenId),
   ]);
   if (chainResult.error) throw chainResult.error;
   if (calculatedResult.error) throw calculatedResult.error;
@@ -1053,6 +1075,7 @@ async function getLiveTokenProfileUncached(
       sells24h: dexCount("sells_24h_count"),
     },
     onchainMarkets,
+    exchangeVolumes,
   };
 }
 

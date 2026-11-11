@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { LiveTokenProfileData } from "@/types/token";
-import { buildProfileModel, type Card, type PoolRow } from "@/lib/ui/profile-model";
+import { buildProfileModel, type Card, type ExchangeRow, type PoolRow } from "@/lib/ui/profile-model";
 import { buildProfilePayload, formatProfilePayloadText } from "@/lib/analysis/profile-payload";
 import { formatChange, formatUsd, shortAddress } from "@/lib/ui/format";
 import { HistoryCharts } from "@/components/HistoricalSection";
@@ -79,6 +79,24 @@ function PoolList({ pools }: { pools: PoolRow[] }) {
   );
 }
 
+/** One row per exchange: name, listed pair count, 24h volume and its share of the listed total. */
+function ExchangeList({ rows }: { rows: ExchangeRow[] }) {
+  return (
+    <ul className="pool-list">
+      {rows.map((row) => (
+        <li key={row.id} className="pool-row">
+          <span className="pool-dex chip">{row.name}</span>
+          <span className="pool-figures">
+            <span><small>Volume · 24h</small>{row.volume24h}</span>
+            <span><small>Share</small>{row.sharePct >= 0.1 ? `${row.sharePct.toFixed(1)}%` : "<0.1%"}</span>
+            <span><small>Pairs</small>{row.pairs}</span>
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Signals({ items, title = "Divergence signals" }: { items: Card[]; title?: string }) {
   if (items.length === 0) return null;
   const interval = items.find((item) => item.note)?.note;
@@ -134,7 +152,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
   const price = formatUsd(token.priceUsd);
   const marketCap = formatUsd(token.marketCapUsd, true);
   // Sections without data are simply omitted (page and nav); no "not available" cards are rendered.
-  const { fundamentals, marketStructure, dexMarkets, onchainIdentity, tokenomics, history, technical, divergence } = model;
+  const { fundamentals, marketStructure, dexMarkets, exchanges, onchainIdentity, tokenomics, history, technical, divergence } = model;
   const hasCrossMetric = divergence.comparisons.length + divergence.signals.length + divergence.indicators.length > 0;
 
   const reveal = (id: string) => window.requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "start" }));
@@ -274,6 +292,19 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
             <p className="scope-line">DEXs: {dexMarkets.dexes.map((dex) => <span key={dex} className="chip chip-quiet">{dex}</span>)}</p>
           ) : null}
           <PoolList pools={dexMarkets.pools} />
+        </section>
+      ) : null}
+
+      {exchanges.available ? (
+        <section className="profile-section" id="exchanges" aria-labelledby="exchanges-title">
+          <SectionHead eyebrow="Centralised &amp; decentralised exchanges" title="Exchanges" id="exchanges-title" />
+          <p className="scope-line">{exchanges.scopeLine}</p>
+          {exchanges.groups.map((group) => (
+            <div key={group.kind}>
+              <h3>{group.title}{group.total ? <small>{group.rows.length} largest · {group.total} · 24h</small> : null}</h3>
+              <ExchangeList rows={group.rows} />
+            </div>
+          ))}
         </section>
       ) : null}
 
