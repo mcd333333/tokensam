@@ -39,6 +39,7 @@ const REPLACEMENTS: [RegExp, string][] = [
   // Binance appears in the stored provenance note on every live price observation
   // (see BINANCE_PRICE_NOTE); the same policy applies to it as to the other providers.
   [/\bBinance\b/g, "exchange"],
+  [/\bCoinbase\b/g, "exchange"],
 ];
 
 /**

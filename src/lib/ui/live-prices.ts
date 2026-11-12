@@ -1,34 +1,36 @@
-import { binanceSymbols } from "../../data/binance-token-mappings.ts";
+import { coinbaseProducts } from "../../data/coinbase-token-mappings.ts";
 import type { DashboardToken } from "../../types/token.ts";
 
 /**
  * Client-side live prices.
  *
- * The dashboard is server-rendered with the stored Binance-preferred price (see
- * livePriceRow in src/lib/data/live-data.ts), which is at most one refresh cycle
- * old. This layer only makes the two live-able numbers -- price and 24h change --
- * keep moving between renders, by polling the Worker's public /binance-prices
- * route. It writes nothing: no Supabase, no provider calls from the browser, and
- * no persistence of any kind. Stored history stays the collector's job.
+ * The dashboard is server-rendered with the stored price (see livePriceRow in
+ * src/lib/data/live-data.ts), which is at most one refresh cycle old. This layer
+ * only makes the two live-able numbers -- price and 24h change -- keep moving
+ * between renders, by polling the app's /api/live-prices route, which reads
+ * Coinbase's public market data. It writes nothing: no Supabase, no provider
+ * calls from the browser, and no persistence of any kind. Stored history stays
+ * the collector's job.
  *
- * The browser never talks to Binance directly, which is deliberate: Binance is
- * geo-blocked in some of this project's markets (Malaysia among them), so a
- * direct connection would simply fail for those viewers. The Worker sits on
- * Cloudflare's network, which is not blocked.
+ * The browser never talks to the exchange directly, which is deliberate: exchange
+ * APIs are geo-blocked in some of this project's markets, so a direct connection
+ * would simply fail for those viewers. The route sits on Cloudflare's network.
+ *
+ * The provider id "binance" below is the id of the live-exchange-price slot (see
+ * DATASET_LABELS), kept from when Binance filled it; the source is now Coinbase.
  */
 
 /**
- * `p` live price, `c` Binance's reported 24-hour change, `c7` the 7-day change
- * computed server-side from `p` against Binance's own 7-day opening price (see
- * src/app/api/live-prices/route.ts). `c7` is optional: it is absent when no
- * opening price is held, and the row then keeps its stored 7-day change.
+ * `p` live price, `c` the exchange's reported 24-hour change, `c7` an optional
+ * 7-day change computed server-side from `p` against a 7-day opening price. The
+ * Coinbase route does not send `c7`, so rows keep their stored 7-day change.
  */
 export type LivePriceEntry = { p: number; c: number; c7?: number };
 export type LivePriceResponse = { asOf: string; prices: Record<string, LivePriceEntry> };
 
 /**
- * Poll interval. Binance updates a ticker about once a second, and the Worker
- * edge-caches for 5 s, so polling faster than this buys nothing but requests --
+ * Poll interval. The exchange updates a ticker about once a second, and the route
+ * serves repeat polls from a 5 s memo, so polling faster than this buys nothing but requests --
  * and request count, not Binance's rate limit, is the budget that binds here
  * (one always-open tab at this interval is ~12,000 Worker requests/day).
  */
@@ -44,8 +46,8 @@ export const LIVE_PRICE_POLL_MS = 7_000;
  */
 export const LIVE_PRICE_MAX_AGE_MS = 60_000;
 
-/** Canonical token id for each quoted Binance symbol (the inverse of binanceSymbols). */
-const tokenIdBySymbol = new Map(Object.entries(binanceSymbols).map(([tokenId, symbol]) => [symbol, tokenId]));
+/** Canonical token id for each quoted Coinbase product (the inverse of coinbaseProducts). */
+const tokenIdBySymbol = new Map(Object.entries(coinbaseProducts).map(([tokenId, symbol]) => [symbol, tokenId]));
 
 export function tokenIdForSymbol(symbol: string): string | undefined {
   return tokenIdBySymbol.get(symbol);
@@ -74,7 +76,7 @@ export function applyLivePrices(
   const collectedAt = new Date(asOf).toISOString();
   let changed = false;
   const next = tokens.map((token) => {
-    const symbol = binanceSymbols[token.id];
+    const symbol = coinbaseProducts[token.id];
     const live = symbol ? response.prices[symbol] : undefined;
     if (!live || !Number.isFinite(live.p) || !Number.isFinite(live.c)) return token;
     // c7 is supplementary: a missing or unusable one leaves the stored 7-day change alone.
@@ -87,7 +89,7 @@ export function applyLivePrices(
     const source = {
       providerId: "binance" as const,
       collectedAt,
-      note: "Binance spot last trade, USDT-quoted (a USD proxy, not USD), polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average.",
+      note: "Coinbase spot last trade, USD-quoted, polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average.",
     };
     /**
      * Market cap is price x circulating supply, and supply does not move in seconds, so a
@@ -110,14 +112,14 @@ export function applyLivePrices(
       sources.change7dPct = {
         providerId: "binance" as const,
         collectedAt,
-        note: "Binance 7-day price change: the live USDT-quoted last trade against Binance's own 7-day rolling opening price. Single-venue, and derived from those two Binance figures rather than reported as a single field.",
+        note: "Exchange 7-day price change: the live last trade against the exchange's own 7-day rolling opening price. Single-venue, and derived from those two figures rather than reported as a single field.",
       };
     }
     if (liveMarketCap !== null) {
       sources.marketCapUsd = {
         providerId: "binance" as const,
         collectedAt,
-        note: "Stored market cap scaled by the live Binance price move. Circulating supply is unchanged from the stored figure; only the price component is live.",
+        note: "Stored market cap scaled by the live exchange price move. Circulating supply is unchanged from the stored figure; only the price component is live.",
       };
     }
 
@@ -135,7 +137,7 @@ export function applyLivePrices(
       sources.fdvUsd = {
         providerId: "binance" as const,
         collectedAt,
-        note: "Live Binance price multiplied by the total supply implied by the stored market-data record. Supply is unchanged from that record; only the price component is live.",
+        note: "Live exchange price multiplied by the total supply implied by the stored market-data record. Supply is unchanged from that record; only the price component is live.",
       };
     }
 

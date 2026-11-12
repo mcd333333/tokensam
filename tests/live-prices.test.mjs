@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 
 import { applyLivePrices, livePricesUrl, tokenIdForSymbol, DEFAULT_LIVE_PRICES_PATH, LIVE_PRICE_MAX_AGE_MS } from "../src/lib/ui/live-prices.ts";
 import { binanceSymbols } from "../src/data/binance-token-mappings.ts";
+import { coinbaseProducts } from "../src/data/coinbase-token-mappings.ts";
+import { GET as getLivePrices } from "../src/app/api/live-prices/route.ts";
 import { BINANCE_SYMBOLS } from "../cloudflare/refresh-scheduler/src/binance-symbols.ts";
 
 const cases = [];
@@ -28,10 +30,10 @@ function token(id, overrides = {}) {
 }
 
 // A token that really is mapped, so the symbol lookup is exercised against real data.
-const MAPPED_ID = Object.keys(binanceSymbols)[0];
-const MAPPED_SYMBOL = binanceSymbols[MAPPED_ID];
+const MAPPED_ID = Object.keys(coinbaseProducts)[0];
+const MAPPED_SYMBOL = coinbaseProducts[MAPPED_ID];
 
-test("a live price replaces the stored one and is attributed to Binance", () => {
+test("a live price replaces the stored one and is attributed to the live exchange price", () => {
   const [row] = applyLivePrices([token(MAPPED_ID)], {
     asOf: fresh, prices: { [MAPPED_SYMBOL]: { p: 123.45, c: -2.5 } },
   }, NOW);
@@ -41,7 +43,7 @@ test("a live price replaces the stored one and is attributed to Binance", () => 
   // Provenance must move with the value, never keep the replaced row's attribution.
   assert.equal(row.metricSources.priceUsd.providerId, "binance");
   assert.equal(row.metricSources.change24hPct.providerId, "binance");
-  assert.match(row.metricSources.priceUsd.note, /USDT-quoted/);
+  assert.match(row.metricSources.priceUsd.note, /Coinbase spot last trade, USD-quoted/);
   // Market cap is a function of price, so it scales with it: 1000 x (123.45/100).
   assert.equal(row.marketCapUsd, 1234.5);
   // Volume is NOT a function of price -- it is value actually traded over a window, which
@@ -51,7 +53,7 @@ test("a live price replaces the stored one and is attributed to Binance", () => 
   assert.equal(row.change7dPct, 7);
 });
 
-test("a live 7-day change replaces the stored one and is attributed to Binance", () => {
+test("a live 7-day change replaces the stored one and is attributed to the live exchange price", () => {
   // c7 is computed server-side from the live price against Binance's own 7-day open
   // (see src/app/api/live-prices/route.ts), so it ticks with every price move.
   const [row] = applyLivePrices([token(MAPPED_ID)], {
@@ -149,8 +151,8 @@ test("a token with no live entry keeps its server-rendered value and source", ()
 });
 
 test("an unmapped token is never given another token's price", () => {
-  const unmapped = "ethereum-usdt"; // documented unmapped: USDT is the quote currency
-  assert.equal(binanceSymbols[unmapped], undefined);
+  const unmapped = "UNMAPPED"; // a token Coinbase does not list
+  assert.equal(coinbaseProducts[unmapped], undefined);
   const [row] = applyLivePrices([token(unmapped)], {
     asOf: fresh, prices: { [MAPPED_SYMBOL]: { p: 999, c: 99 } },
   }, NOW);
@@ -182,19 +184,75 @@ test("an unchanged poll returns the same array reference, so React re-renders no
 });
 
 test("polling defaults to the same-origin route, with the env var as an override", () => {
-  // Binance 403s Cloudflare Workers' egress, so live prices are served from Vercel at
-  // /api/live-prices. An unset env var must mean that route, not "disabled".
+  // Live prices are served by the app's own /api/live-prices route. An unset env var must mean
+  // that route, not "disabled".
   assert.equal(livePricesUrl(undefined), DEFAULT_LIVE_PRICES_PATH);
   assert.equal(livePricesUrl("   "), DEFAULT_LIVE_PRICES_PATH);
   assert.equal(livePricesUrl("https://elsewhere.example/prices/"), "https://elsewhere.example/prices");
 });
 
-test("the Worker's generated symbol allowlist matches the canonical mapping", () => {
+test("the Worker's generated Binance symbol allowlist still matches the Binance mapping", () => {
   // The Worker cannot import from src/, so its list is generated (pnpm binance:symbols).
   // Adding a token without regenerating would leave it with no live price, silently.
   assert.deepEqual([...BINANCE_SYMBOLS].sort(), Object.values(binanceSymbols).sort());
-  // And every quoted symbol must resolve back to exactly one canonical token.
-  for (const symbol of BINANCE_SYMBOLS) assert.ok(tokenIdForSymbol(symbol), `${symbol} maps to no token`);
+});
+
+test("every Coinbase product resolves back to exactly one canonical token", () => {
+  const products = Object.values(coinbaseProducts);
+  assert.equal(new Set(products).size, products.length, "no two tokens share a product");
+  for (const [tokenId, product] of Object.entries(coinbaseProducts)) assert.equal(tokenIdForSymbol(product), tokenId);
+});
+
+const realFetch = globalThis.fetch;
+function coinbaseStub(handler) {
+  const calls = [];
+  globalThis.fetch = async (url) => { calls.push(new URL(String(url))); return handler(new URL(String(url)), calls.length); };
+  return { calls, restore: () => { globalThis.fetch = realFetch; } };
+}
+const productsFor = (url, overrides = {}) => url.searchParams.getAll("product_ids").map((id) => ({
+  product_id: id, price: "10.5", price_percentage_change_24h: "-1.25", status: "online",
+  trading_disabled: false, is_disabled: false, ...(overrides[id] ?? {}),
+}));
+
+test("the live-prices route returns Coinbase last price and 24h change keyed by product, in batches", async () => {
+  const stub = coinbaseStub(async (url) => Response.json({ products: productsFor(url, { [MAPPED_SYMBOL]: { price: "123.45", price_percentage_change_24h: "-2.5" } }) }));
+  try {
+    const response = await getLivePrices();
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.deepEqual(body.prices[MAPPED_SYMBOL], { p: 123.45, c: -2.5 });
+    assert.equal(Object.keys(body.prices).length, Object.keys(coinbaseProducts).length);
+    assert.ok(stub.calls.length >= 2, "117 products need more than one request");
+    assert.ok(stub.calls.every((url) => url.hostname === "api.coinbase.com" && url.searchParams.getAll("product_ids").length <= 60));
+  } finally { stub.restore(); }
+});
+
+test("the route drops disabled, offline and non-finite products rather than sending zeros, and memoises success", async () => {
+  const ids = Object.values(coinbaseProducts);
+  const stub = coinbaseStub(async (url) => Response.json({ products: productsFor(url, {
+    [ids[1]]: { status: "offline" }, [ids[2]]: { trading_disabled: true }, [ids[3]]: { price: "abc" }, [ids[4]]: { price: "0" },
+  }) }));
+  try {
+    // The memo from the previous test is still fresh, so expire it by waiting past the window.
+    await new Promise((resolve) => setTimeout(resolve, 5_100));
+    const body = await (await getLivePrices()).json();
+    for (const id of [ids[1], ids[2], ids[3], ids[4]]) assert.equal(body.prices[id], undefined, `${id} omitted`);
+    assert.ok(body.prices[ids[0]]);
+    const before = stub.calls.length;
+    await getLivePrices();
+    assert.equal(stub.calls.length, before, "a repeat poll inside the window makes no upstream call");
+  } finally { stub.restore(); }
+});
+
+test("an upstream failure is a 502 that is never cacheable", async () => {
+  const stub = coinbaseStub(async () => new Response("blocked", { status: 403 }));
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 5_100));
+    const response = await getLivePrices();
+    assert.equal(response.status, 502);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await response.json(), { error: "Coinbase returned HTTP 403." });
+  } finally { stub.restore(); }
 });
 
 let failures = 0;
