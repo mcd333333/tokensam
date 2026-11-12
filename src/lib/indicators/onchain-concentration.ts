@@ -1,10 +1,10 @@
 import type { IndicatorReading, TechnicalIndicator } from "../../types/technical-indicators.ts";
 
 /**
- * GeckoTerminal on-chain concentration indicators: Herfindahl-Hirschman Index
+ * DEX Screener on-chain concentration indicators: Herfindahl-Hirschman Index
  * across a token's pools and across the DEXes those pools trade on. These are
- * cross-sectional (computed from the latest GeckoTerminal snapshot), not the
- * daily-series pipeline in build.ts/catalog.ts/series.ts — GeckoTerminal has
+ * cross-sectional (computed from the latest DEX Screener pool snapshot), not the
+ * daily-series pipeline in build.ts/catalog.ts/series.ts — DEX Screener pool data has
  * exactly one collected snapshot today, not an accumulated history, so no
  * trend/momentum/moving-average indicator can be computed from it yet. Both
  * indicators below return `null` (and are simply omitted, like every other
@@ -65,8 +65,8 @@ function buildIndicator(
     readings: readings(hhi),
     state: concentrationState(hhi),
     provenance: {
-      providers: ["geckoterminal"],
-      // Not a daily-series input (see IndicatorInput); this reads pool-level GeckoTerminal data instead.
+      providers: ["dexscreener"],
+      // Not a daily-series input (see IndicatorInput); this reads pool-level DEX Screener data instead.
       inputs: [],
       // Not token_metric_observations rows; this is a single pool-level snapshot (see observationStart/End).
       sourceObservationIds: [],
@@ -117,8 +117,8 @@ export function buildConcentrationIndicators(pools: ConcentrationPool[], provena
       "pool_concentration_hhi",
       "Pool Concentration (HHI)",
       "Share of on-chain liquidity concentrated in the most dominant pool(s).",
-      "Herfindahl-Hirschman Index of this token's on-chain liquidity across its individual GeckoTerminal-indexed pools. Higher values mean liquidity sits in fewer pools; lower values mean it is spread across many.",
-      "HHI = Σ(pool_liquidity_i / total_liquidity)², over pools with valid positive liquidity in the latest GeckoTerminal snapshot.",
+      "Herfindahl-Hirschman Index of this token's on-chain liquidity across its individual DEX Screener-indexed pools. Higher values mean liquidity sits in fewer pools; lower values mean it is spread across many.",
+      "HHI = Σ(pool_liquidity_i / total_liquidity)², over pools with valid positive liquidity in the latest DEX Screener pool snapshot.",
       "pool",
       poolLiquidities,
       provenance,
@@ -127,8 +127,8 @@ export function buildConcentrationIndicators(pools: ConcentrationPool[], provena
       "dex_concentration_hhi",
       "DEX Concentration (HHI)",
       "Share of on-chain liquidity concentrated on the most dominant exchange(s).",
-      "Herfindahl-Hirschman Index of this token's on-chain liquidity across the decentralized exchanges hosting its GeckoTerminal-indexed pools, after summing every valid pool's liquidity by exchange. Higher values mean liquidity depends on fewer exchanges.",
-      "HHI = Σ(dex_liquidity_i / total_liquidity)², where dex_liquidity_i sums valid pool liquidity for exchange i in the latest GeckoTerminal snapshot.",
+      "Herfindahl-Hirschman Index of this token's on-chain liquidity across the decentralized exchanges hosting its DEX Screener-indexed pools, after summing every valid pool's liquidity by exchange. Higher values mean liquidity depends on fewer exchanges.",
+      "HHI = Σ(dex_liquidity_i / total_liquidity)², where dex_liquidity_i sums valid pool liquidity for exchange i in the latest DEX Screener pool snapshot.",
       "exchange",
       dexLiquidities,
       provenance,

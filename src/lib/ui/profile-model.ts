@@ -36,7 +36,7 @@ export type ProfileModel = {
     | { available: true; protocolName: string; scopeLine: string; primary: Card[]; valuation: Card[]; changes: Card[] }
     | { available: false; note: SectionNote };
   marketStructure: { available: true; scopeLine: string; cards: Card[] } | { available: false; note: SectionNote };
-  /** GeckoTerminal on-chain pools: distinct pool-level data (DEX, pool, liquidity, volume), not the DEX Screener aggregate above. */
+  /** On-chain DEX pools (DEX Screener, up to 30 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
   dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; pools: PoolRow[] } | { available: false; note: SectionNote };
   /** Exchange listings (centralised and decentralised) with each exchange's own 24h volume (daily snapshot); omitted when none is stored. */
   exchanges: { available: true; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
@@ -230,7 +230,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
       : { available: false, note: { title: "DEX markets", reason: "No exact-address DEX market data is currently stored for this token." } };
   }
 
-  // D2. DEX Markets (GeckoTerminal): market scope, exact-address identity only. This is separate,
+  // D2. DEX Markets (DEX Screener pool snapshot): market scope, exact-address identity only. This is separate,
   // pool-level data (individual pools/DEXes) rather than a second copy of the Trading & Liquidity
   // aggregate above; both are shown, clearly separate, rather than merging or picking a "winning" provider.
   let dexMarkets: ProfileModel["dexMarkets"];
@@ -278,7 +278,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
 
   // D3. Exchanges: where the token is listed and its 24h volume on each (CoinGecko tickers, refreshed once a
   // day), split into centralised and decentralised venues. This covers every token, unlike DEX Markets
-  // above, which needs a GeckoTerminal address mapping and shows individual pools.
+  // above, which needs an on-chain address mapping and shows individual pools.
   const exchangeData = data.exchangeVolumes;
   const exchangeGroups: ExchangeGroup[] = exchangeData
     ? (["cex", "dex"] as const).flatMap((kind) => {

@@ -265,7 +265,7 @@ async function sendQuotaAlert(env: Env, level: string, reasons: string[], usage:
 
 /**
  * Calls one scheduled route with the same `Authorization: Bearer <CRON_SECRET>` convention
- * both /api/cron/refresh and /api/cron/geckoterminal require. `x-scheduled-by` lets those
+ * every cron route requires. `x-scheduled-by` lets those
  * routes label the run "scheduled" instead of "manual" (they cannot see Vercel's own
  * `x-vercel-cron-schedule` header from here, since this call is not Vercel Cron itself).
  */
@@ -303,67 +303,20 @@ function isSuccessfulResponse(result: RouteResult): boolean {
   return !result.error && result.status >= 200 && result.status < 300;
 }
 
-const GECKOTERMINAL_SLICES_PER_TICK = 7;
-// GeckoTerminal's public limit is paced at 6.5 s/request (same floor as the collector itself).
-const GECKOTERMINAL_PACE_MS = 6_500;
-const GECKOTERMINAL_RATE_LIMIT_COOLDOWN_MS = 20_000;
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-/**
- * Collects GeckoTerminal one token per call (`?slice=1`) and does the pacing here, so Vercel is
- * billed ~2 s per token instead of holding a function open for ~260 s while it sleeps between
- * requests. 7 tokens per 5-minute tick is the same throughput the old 15-minute, ~21-token run had.
- * Stops on the first non-2xx (busy/disabled/failed) and backs off when a call reports a 429.
- */
-async function runGeckoTerminalSlices(env: Env): Promise<RouteResult> {
-  let last: RouteResult = { path: "/api/cron/geckoterminal", status: 0, body: "", error: "no slices ran" };
-  let done = 0;
-  for (let i = 0; i < GECKOTERMINAL_SLICES_PER_TICK; i += 1) {
-    last = await callRoute(env.REFRESH_URL, "/api/cron/geckoterminal?slice=1", env.CRON_SECRET);
-    if (!isSuccessfulResponse(last)) break;
-    done += 1;
-    let status = "";
-    let rateLimited = false;
-    try {
-      const body = JSON.parse(last.body) as { status?: string; rateLimitEvents?: number };
-      status = body.status ?? "";
-      rateLimited = (body.rateLimitEvents ?? 0) > 0;
-    } catch { /* non-JSON 2xx: keep going */ }
-    if (status === "disabled") break;
-    if (i < GECKOTERMINAL_SLICES_PER_TICK - 1) await sleep(rateLimited ? GECKOTERMINAL_RATE_LIMIT_COOLDOWN_MS : GECKOTERMINAL_PACE_MS);
-  }
-  if (last.error) console.error(`refresh-scheduler: /api/cron/geckoterminal request failed after ${done} slices: ${last.error}`);
-  else console.log(`refresh-scheduler: /api/cron/geckoterminal ${done} slices, last -> ${last.status} ${last.body.slice(0, 300)}`);
-  return last;
-}
-
 /**
  * Runs on every 5-minute Cron Trigger tick (see wrangler.toml).
  *
  * - /api/cron/refresh: each provider's own REFRESH_POLICY interval (CoinGecko/DEX Screener
- *   15 min, DeFiLlama Coins 30 min, DeFiLlama 6 h, DUE_TOLERANCE_MS 2 min) decides what actually
+ *   15/30 min, DeFiLlama Coins 60 min, DeFiLlama 6 h, DUE_TOLERANCE_MS 2 min) decides what actually
  *   runs; a tick where nothing is due returns quickly with an empty `due` list.
- * - /api/cron/geckoterminal: GECKOTERMINAL_SYNC_INTERVAL (13 min by default) means two out of
- *   every three 5-minute ticks return `{"status":"skipped","reason":"not_due"}` immediately,
- *   and the third actually collects — an effective ~15-minute GeckoTerminal cadence. Its own
- *   database lock (geckoterminal_sync_runs) also means a tick that lands while a collection
- *   from a previous tick is still running just gets `{"status":"busy"}` (409) rather than
- *   starting a second, overlapping run.
+ * - /api/cron/dex-pools: refreshes the stalest on-chain DEX pool snapshots (DEX Screener), 12 per tick.
+ * - /api/cron/exchanges: refreshes the stalest exchange-volume snapshots (CoinGecko tickers), under a monthly cap.
  *
- * Sequential, not parallel: GeckoTerminal is rate-limit sensitive (6.5 s/request) and
- * independent of the main refresh, so there is no reason to race them against each other for
- * this Worker's own CPU-time budget. It is also a correctness requirement now, not just a CPU
- * choice: GeckoTerminal only runs after `/api/cron/refresh`'s response is actually in hand, and
- * only when that response indicates the refresh completed (not necessarily every provider
- * succeeding — `partial`/`busy`/`skipped` still mean the route itself ran and returned cleanly).
- * A network-level failure or a 5xx (including a 504, which is what a `maxDuration`-killed
- * invocation looks like to an external caller) means Postgres may still be under load from that
- * failed attempt, so GeckoTerminal is skipped for this tick rather than adding more concurrent
- * database work on top of it. `ctx.waitUntil(run(env))` in the scheduled handler below already
- * means this whole sequential sequence — refresh, then conditionally GeckoTerminal — completes
- * (or the tick ends) before the next Cron Trigger tick's own `run(env)` starts; there is no
- * second, independent path that launches either route out of order.
+ * Sequential, not parallel: the pool and exchange routes only run after `/api/cron/refresh`'s response is
+ * actually in hand, and only when it returned 2xx (`partial`/`busy`/`skipped` still mean the route ran and
+ * returned cleanly). A network-level failure or a 5xx (including a 504, which is what a `maxDuration`-killed
+ * invocation looks like to an external caller) means Postgres may still be under load from that failed
+ * attempt, so the extra database work is skipped for this tick rather than stacked on top of it.
  */
 async function run(env: Env): Promise<RouteResult[]> {
   appBinding = env.APP;
@@ -398,13 +351,17 @@ async function run(env: Env): Promise<RouteResult[]> {
     }
   }
 
-  let geckoTerminalResult: RouteResult | null = null;
-
+  // On-chain DEX pools (DEX Screener): refreshes the stalest of the ~55 mapped tokens, 12 per tick, so the
+  // list turns over about every 30 minutes and an idle tick is a no-op. This replaced the GeckoTerminal
+  // slices, which GeckoTerminal answered with HTTP 429 on ~85% of requests from Cloudflare's addresses.
+  let dexPoolsResult: RouteResult | null = null;
   if (isSuccessfulResponse(refreshResult)) {
-    geckoTerminalResult = await runGeckoTerminalSlices(env);
+    dexPoolsResult = await callRoute(env.REFRESH_URL, "/api/cron/dex-pools?slice=12", env.CRON_SECRET);
+    if (dexPoolsResult.error) console.error(`refresh-scheduler: /api/cron/dex-pools request failed: ${dexPoolsResult.error}`);
+    else console.log(`refresh-scheduler: /api/cron/dex-pools -> ${dexPoolsResult.status} ${dexPoolsResult.body.slice(0, 300)}`);
   } else {
     console.error(
-      `refresh-scheduler: skipping /api/cron/geckoterminal this tick because /api/cron/refresh did not return 2xx `
+      `refresh-scheduler: skipping /api/cron/dex-pools this tick because /api/cron/refresh did not return 2xx `
       + `(status ${refreshResult.status}${refreshResult.error ? `, error: ${refreshResult.error}` : ""}); `
       + "it will be retried on the next tick.",
     );
@@ -424,7 +381,7 @@ async function run(env: Env): Promise<RouteResult[]> {
   // scheduled inside Postgres with pg_cron (see supabase/migrations/20261029140000_retention_pg_cron.sql),
   // so it costs no Vercel function invocation. /api/cron/retention remains for manual `?force=1` runs.
 
-  return [refreshResult, ...(geckoTerminalResult ? [geckoTerminalResult] : []), ...(exchangesResult ? [exchangesResult] : [])];
+  return [refreshResult, ...(dexPoolsResult ? [dexPoolsResult] : []), ...(exchangesResult ? [exchangesResult] : [])];
 }
 
 export default {

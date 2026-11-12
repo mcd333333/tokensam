@@ -541,13 +541,6 @@ const INDICATOR_EXTRA_SERIES = [{ providerId: "coingecko", metricId: "circulatin
  * across every matched pool, mirroring the DEX Screener normalizer's semantics
  * but from GeckoTerminal's own pool coverage and snapshot time.
  */
-const GECKO_TERMINAL_SERIES = [
-  { providerId: "geckoterminal", metricId: "liquidity_usd" },
-  { providerId: "geckoterminal", metricId: "volume_24h_usd" },
-  { providerId: "geckoterminal", metricId: "price_change_24h_pct" },
-  { providerId: "geckoterminal", metricId: "fdv_usd" },
-  { providerId: "geckoterminal", metricId: "market_cap_usd" },
-];
 
 type DbCalculatedValue = {
   id: number;
@@ -741,6 +734,51 @@ type GeckoTerminalRawPool = {
  * already preserved in `raw_provider_records` and matched by pool address.
  * Optional: a failed read leaves pools empty rather than failing the profile.
  */
+/**
+ * Latest on-chain DEX pool snapshot for a token (DEX Screener, refreshed every ~30 minutes by
+ * /api/cron/dex-pools), most liquid pool first. Optional: a failed read or a token with no snapshot yet leaves
+ * the pool list empty rather than failing the profile. `primary` is the most liquid pool, which supplies the
+ * price change, FDV and market cap shown with the pools.
+ */
+export async function readDexPools(
+  client: SupabaseAdminClient,
+  tokenId: string,
+): Promise<{
+  dexes: string[];
+  pools: OnchainMarketsData["pools"];
+  primary: { priceChange24hPct: number | null; fdvUsd: number | null; marketCapUsd: number | null } | null;
+  collectedAt: string | null;
+}> {
+  const empty = { pools: [], dexes: [], primary: null, collectedAt: null };
+  try {
+    const { data, error } = await client.from("token_dex_pools").select("fetched_at,pools").eq("token_id", tokenId).maybeSingle();
+    if (error) throw error;
+    const row = data as { fetched_at?: string; pools?: unknown } | null;
+    if (!row?.fetched_at || !Array.isArray(row.pools)) return empty;
+    const raw = (row.pools as Record<string, unknown>[]).filter((pool) => typeof pool?.pairAddress === "string");
+    const pools = raw.map((pool) => ({
+      pairAddress: pool.pairAddress as string,
+      dexId: typeof pool.dexId === "string" ? pool.dexId : null,
+      createdAt: typeof pool.createdAt === "string" ? pool.createdAt : null,
+      liquidityUsd: numberValue(pool.liquidityUsd),
+      volume24hUsd: numberValue(pool.volume24hUsd),
+      priceUsd: numberValue(pool.priceUsd),
+    }));
+    const lead = raw[0];
+    return {
+      pools,
+      dexes: [...new Set(pools.map((pool) => pool.dexId).filter((id): id is string => Boolean(id)))],
+      primary: lead
+        ? { priceChange24hPct: numberValue(lead.priceChange24hPct), fdvUsd: numberValue(lead.fdvUsd), marketCapUsd: numberValue(lead.marketCapUsd) }
+        : null,
+      collectedAt: row.fetched_at,
+    };
+  } catch (error) {
+    console.error(`DEX pool read failed for ${tokenId} (shown as unavailable):`, error);
+    return empty;
+  }
+}
+
 /** Latest exchange volume snapshot for a token; optional, so a failed read just omits the section. */
 export async function readExchangeVolumes(
   client: SupabaseAdminClient,
@@ -948,13 +986,11 @@ async function getLiveTokenProfileUncached(
   if (tokenError) throw tokenError;
   if (!tokenData) return null;
   const tokenRow = tokenData as DbToken;
-  const [chainResult, observations, calculatedResult, definitionResult, mappingResult, logos, supplyHistory, reportedFdv, gtPools, exchangeVolumes] = await Promise.all([
+  const [chainResult, observations, calculatedResult, definitionResult, mappingResult, logos, supplyHistory, reportedFdv, dexPools, exchangeVolumes] = await Promise.all([
     client.from("chains").select("id,name").eq("id", tokenRow.chain_id).maybeSingle(),
     readLatest(client, [tokenId]).then(async (latest) => mergeById(
       latest,
       await readObservationWindow<DbObservation>(client, [tokenId], HISTORY_SERIES, new Date(Date.now() - HISTORY_DAYS * DAY_MS)),
-      // GeckoTerminal's own aggregates (market scope); a separate provider, read the same way as history series.
-      await readObservationWindow<DbObservation>(client, [tokenId], GECKO_TERMINAL_SERIES, new Date(Date.now() - HISTORY_DAYS * DAY_MS)),
       // Binance's live price + 24h change (see fetchLiveBinanceObservations) -- fetched
       // live, not read from Supabase.
       includeLiveBinance ? await fetchLiveBinanceObservations([tokenId]) : [],
@@ -970,8 +1006,8 @@ async function getLiveTokenProfileUncached(
       .catch((error) => { console.error(`Indicator supply history read failed for ${tokenId}:`, error); return [] as DbObservation[]; }),
     // Token-level FDV from the stored market-data record (Tokenomics); failures leave it unavailable.
     readReportedFdv(client, [tokenId]),
-    // GeckoTerminal pool identity (DEX, address, creation time); optional, so a failed read leaves it empty.
-    readGeckoTerminalPools(client, tokenId),
+    // On-chain DEX pools (DEX Screener snapshot); optional, so a failed read leaves it empty.
+    readDexPools(client, tokenId),
     readExchangeVolumes(client, tokenId),
   ]);
   if (chainResult.error) throw chainResult.error;
@@ -1014,21 +1050,24 @@ async function getLiveTokenProfileUncached(
   // Market-scope counts only for a curated exact-address mapping; never from a wrapped proxy.
   const dexCount = (metricId: string) => dexMapped ? observationValue(observationFor(observations, tokenId, "dexscreener", metricId)) : null;
   const protocolMapped = coverage.some((item) => item.provider === "defillama" && item.status === "mapped");
-  // GeckoTerminal identity: network + exact contract address, from its own curated mapping (never a
+  // On-chain identity: network + exact contract address, from the curated DEX Screener mapping (never a
   // wrapped or ticker-matched substitute). The chain name reuses this token's own chain lookup, since the
   // canonical chain the mapping is keyed to is always this token's own chain in the current mapping data.
-  const gtMapping = mappings.find((mapping) => mapping.provider_id === "geckoterminal");
-  const onchainMarkets: OnchainMarketsData | null = gtMapping
+  // Liquidity is the most liquid pool's, volume is summed across the stored pools, and the price change, FDV
+  // and market cap are the most liquid pool's, all from the pool snapshot.
+  const onchainMapping = mappings.find((mapping) => mapping.provider_id === "dexscreener");
+  const poolVolumes = dexPools.pools.map((pool) => pool.volume24hUsd).filter((value): value is number => value !== null);
+  const onchainMarkets: OnchainMarketsData | null = onchainMapping
     ? {
-      network: gtMapping.chain_id === tokenRow.chain_id ? (chain?.name ?? gtMapping.chain_id) : gtMapping.chain_id,
-      contractAddress: gtMapping.external_contract_address,
-      liquidityUsd: observationValue(observationFor(observations, tokenId, "geckoterminal", "liquidity_usd")),
-      volume24hUsd: observationValue(observationFor(observations, tokenId, "geckoterminal", "volume_24h_usd")),
-      priceChange24hPct: observationValue(observationFor(observations, tokenId, "geckoterminal", "price_change_24h_pct")),
-      fdvUsd: observationValue(observationFor(observations, tokenId, "geckoterminal", "fdv_usd")),
-      marketCapUsd: observationValue(observationFor(observations, tokenId, "geckoterminal", "market_cap_usd")),
-      dexes: gtPools.dexes,
-      pools: gtPools.pools,
+      network: onchainMapping.chain_id === tokenRow.chain_id ? (chain?.name ?? onchainMapping.chain_id) : onchainMapping.chain_id,
+      contractAddress: onchainMapping.external_contract_address,
+      liquidityUsd: dexPools.pools[0]?.liquidityUsd ?? null,
+      volume24hUsd: poolVolumes.length > 0 ? poolVolumes.reduce((sum, value) => sum + value, 0) : null,
+      priceChange24hPct: dexPools.primary?.priceChange24hPct ?? null,
+      fdvUsd: dexPools.primary?.fdvUsd ?? null,
+      marketCapUsd: dexPools.primary?.marketCapUsd ?? null,
+      dexes: dexPools.dexes,
+      pools: dexPools.pools,
     }
     : null;
   let technicalIndicators: TechnicalIndicatorsView | null = null;
@@ -1039,10 +1078,10 @@ async function getLiveTokenProfileUncached(
     // Indicators are optional context: a calculation failure hides the section, never the profile.
     console.error(`Technical indicator calculation failed for ${tokenId}:`, error);
   }
-  // On-chain concentration (Pool/DEX HHI): cross-sectional, from the latest GeckoTerminal
+  // On-chain concentration (Pool/DEX HHI): cross-sectional, from the latest DEX Screener pool
   // snapshot only. Merged in even if the daily-series indicators above found nothing.
   const concentrationIndicators = onchainMarkets
-    ? buildConcentrationIndicators(onchainMarkets.pools, { collectedAt: gtPools.collectedAt, calculatedAt: nowIso })
+    ? buildConcentrationIndicators(onchainMarkets.pools, { collectedAt: dexPools.collectedAt, calculatedAt: nowIso })
     : [];
   if (concentrationIndicators.length > 0) {
     technicalIndicators = withExtraIndicators(technicalIndicators ?? { calculatedAt: nowIso, method: INDICATOR_METHOD, groups: [] }, concentrationIndicators);

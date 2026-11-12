@@ -128,9 +128,9 @@ test("a pool with no dexId is excluded from DEX concentration but still counts f
   assert.equal(hhiValue(dex_concentration_hhi), 1);
 });
 
-test("provenance names GeckoTerminal as the backend provider and uses the snapshot's own collection time", () => {
+test("provenance names DEX Screener as the backend provider and uses the snapshot's own collection time", () => {
   const { pool_concentration_hhi } = indicatorsById([pool()]);
-  assert.deepEqual(pool_concentration_hhi.provenance.providers, ["geckoterminal"]);
+  assert.deepEqual(pool_concentration_hhi.provenance.providers, ["dexscreener"]);
   assert.equal(pool_concentration_hhi.provenance.observationStart, provenance.collectedAt);
   assert.equal(pool_concentration_hhi.provenance.observationEnd, provenance.collectedAt);
   assert.equal(pool_concentration_hhi.provenance.calculatedAt, provenance.calculatedAt);

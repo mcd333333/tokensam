@@ -27,7 +27,7 @@ export const TECHNICAL_PROVENANCE: { dataset: string; provider: string }[] = [
   { dataset: "Reference token prices", provider: "DeFiLlama (coins API)" },
   { dataset: "Protocol data", provider: "DeFiLlama" },
   { dataset: "DEX market data", provider: "DEX Screener" },
-  { dataset: "On-chain DEX pools", provider: "GeckoTerminal" },
+  { dataset: "On-chain DEX pools", provider: "DEX Screener" },
 ];
 
 // Order matters: the scoped phrase is rewritten before the bare name.
