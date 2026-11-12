@@ -48,7 +48,8 @@ export async function fetchTokenStats(
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const apiKey = options.apiKey ?? process.env.DEXPAPRIKA_API_KEY?.trim();
-  const url = `${BASE_URL}/networks/${encodeURIComponent(network)}/tokens/${encodeURIComponent(tokenAddress)}`;
+  // Move coin types ("0x1::aptos_coin::AptosCoin") keep their colons: DexPaprika answers 404 to percent-encoded ones.
+  const url = `${BASE_URL}/networks/${encodeURIComponent(network)}/tokens/${encodeURIComponent(tokenAddress).replace(/%3A/gi, ":")}`;
   const headers: Record<string, string> = { accept: "application/json" };
   if (apiKey) headers.authorization = apiKey;
 

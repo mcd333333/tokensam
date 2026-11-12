@@ -159,6 +159,12 @@ test("fetchTokenStats: bare Authorization key only when set, a 404 means not ind
   await assert.rejects(fetchTokenStats("ethereum", UNI, { apiKey: null, fetchImpl: async () => new Response("secret", { status: 402 }), sleep: async () => {} }), (error) => error.status === 402 && !/secret/.test(error.message));
 });
 
+test("Move coin types keep their colons in the token URL (DexPaprika 404s on %3A)", async () => {
+  let seen = "";
+  await fetchTokenStats("aptos", "0x1::aptos_coin::AptosCoin", { apiKey: null, fetchImpl: async (url) => { seen = String(url); return Response.json(STATS); } });
+  assert.equal(seen, "https://api.dexpaprika.com/networks/aptos/tokens/0x1::aptos_coin::AptosCoin");
+});
+
 function fakeClient({ rows = [], calls = 0 } = {}) {
   const state = { calls, upserts: [], rpc: 0 };
   const client = {
