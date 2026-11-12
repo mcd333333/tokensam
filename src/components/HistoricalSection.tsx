@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { HistoricalMetric, HistoricalPeriod, HistoryChartKey, TokenHistoricalData } from "@/types/historical-data";
 import { HISTORICAL_PERIODS, coverageChangePct, pointsInPeriod, riskProfile } from "@/lib/data/historical-series";
+import { DIRECTION_DOWN_COLOR, DIRECTION_UP_COLOR, directionStops } from "@/lib/ui/direction-stops";
 import { formatChange, formatDuration, formatUsd } from "@/lib/ui/format";
 
 // Charts connect stored observations and derived daily means; below this count each point is drawn.
@@ -15,6 +16,8 @@ const SERIES: Record<HistoricalMetric, { label: string; color: string }> = {
   tvlUsd: { label: "TVL", color: "#c9a45c" },
 };
 const AXIS = { fill: "#7d776c", fontSize: 11 };
+const UP_COLOR = DIRECTION_UP_COLOR;
+const DOWN_COLOR = DIRECTION_DOWN_COLOR;
 
 function utcLabel(time: number, withTime = true) {
   return new Date(time).toLocaleString("en-GB", withTime
@@ -51,6 +54,10 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
   const hasTrend = coverage.status === "available";
   const change = hasTrend ? formatChange(coverageChangePct(points)) : null;
   const { label, color } = SERIES[metric];
+  const gradientId = useId().replace(/:/g, "");
+  const stops = directionStops(chartPoints);
+  // Falls back to the series colour when there is no direction to show (fewer than two distinct times).
+  const stroke = stops.length > 0 ? `url(#${gradientId})` : color;
 
   return (
     <article className={`chart-card${wide ? " chart-wide" : ""}`} aria-label={`${label} history`}>
@@ -65,6 +72,11 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
         <div className="chart-plot" role="img" aria-label={`${label} in USD: ${coverage.coverageLabel} within the ${period} window`}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartPoints} margin={{ top: 10, right: 6, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+                  {stops.map((stop, index) => <stop key={index} offset={stop.offset} stopColor={stop.color} />)}
+                </linearGradient>
+              </defs>
               <CartesianGrid stroke="rgba(236, 230, 218, 0.06)" vertical={false} />
               <XAxis
                 dataKey="time" type="number" scale="time" domain={["dataMin", "dataMax"]}
@@ -76,8 +88,14 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
               <YAxis tickFormatter={(value: number) => formatUsd(value, true) ?? ""} tick={AXIS} axisLine={false} tickLine={false} width={62} domain={["auto", "auto"]} />
               <Tooltip content={<ChartTooltip seriesLabel={label} />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
               <Line
-                type="linear" dataKey="valueUsd" name={label} stroke={color} strokeWidth={1.75}
-                dot={points.length <= MAX_POINTS_WITH_DOTS ? { r: 2, fill: color, strokeWidth: 0 } : false}
+                type="linear" dataKey="valueUsd" name={label} stroke={stroke} strokeWidth={1.75}
+                dot={points.length <= MAX_POINTS_WITH_DOTS && stops.length > 0
+                  ? (props: { cx?: number; cy?: number; index?: number }) => {
+                    const index = props.index ?? 0;
+                    const rose = index === 0 ? chartPoints[1]?.valueUsd >= chartPoints[0].valueUsd : chartPoints[index].valueUsd >= chartPoints[index - 1].valueUsd;
+                    return <circle key={index} cx={props.cx} cy={props.cy} r={2} fill={rose ? UP_COLOR : DOWN_COLOR} />;
+                  }
+                  : points.length <= MAX_POINTS_WITH_DOTS ? { r: 2, fill: color, strokeWidth: 0 } : false}
                 activeDot={{ r: 3.5, fill: color, stroke: "#0b0b0c", strokeWidth: 1.5 }}
                 isAnimationActive={false}
               />

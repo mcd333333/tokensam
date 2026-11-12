@@ -130,6 +130,18 @@ test("11. Price and Volume · 24h charts are unchanged; Market cap is no longer 
   assert.match(chart, /metric === "riskProfile"\n\s+\? <RiskProfileCard/);
 });
 
+test("12. line charts colour rises green and falls red with hard stops along the time axis", async () => {
+  const { directionStops, DIRECTION_UP_COLOR, DIRECTION_DOWN_COLOR } = await import("../src/lib/ui/direction-stops.ts");
+  const stops = directionStops([{ time: 0, valueUsd: 1 }, { time: 10, valueUsd: 2 }, { time: 20, valueUsd: 3 }, { time: 30, valueUsd: 1 }, { time: 40, valueUsd: 1 }, { time: 60, valueUsd: 2 }]);
+  assert.deepEqual(stops, [
+    { offset: 0, color: DIRECTION_UP_COLOR }, { offset: 20 / 60, color: DIRECTION_UP_COLOR },
+    { offset: 20 / 60, color: DIRECTION_DOWN_COLOR }, { offset: 40 / 60, color: DIRECTION_DOWN_COLOR },
+    { offset: 40 / 60, color: DIRECTION_UP_COLOR }, { offset: 1, color: DIRECTION_UP_COLOR },
+  ].map((stop, index) => index === 3 ? { ...stop } : stop).slice(0, 6).map((stop) => stop), "flat step keeps the previous (red) colour until the next rise");
+  assert.deepEqual(directionStops([{ time: 0, valueUsd: 5 }, { time: 10, valueUsd: 5 }]), [], "a flat line has no direction to colour");
+  assert.deepEqual(directionStops([{ time: 0, valueUsd: 5 }]), []);
+});
+
 let failures = 0;
 for (const { name, run } of cases) {
   try {
