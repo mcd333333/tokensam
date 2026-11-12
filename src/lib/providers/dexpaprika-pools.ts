@@ -41,13 +41,22 @@ export type DexPool = {
   pairAddress: string;
   /** DexPaprika's dex id, which carries the version, e.g. "uniswap_v3". */
   dexId: string | null;
+  /** Display name of the DEX, e.g. "Uniswap V3". */
+  dexName: string | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
+  volume7dUsd: number | null;
+  volume30dUsd: number | null;
+  /** All transactions in the pool over 24 hours. */
+  transactions24h: number | null;
   priceUsd: number | null;
+  priceChange5mPct: number | null;
+  priceChange1hPct: number | null;
+  priceChange6hPct: number | null;
   priceChange24hPct: number | null;
-  /** DexPaprika's pool search carries no FDV or market cap, so these stay null and their cards are not shown. */
-  fdvUsd: number | null;
-  marketCapUsd: number | null;
+  priceChange48hPct: number | null;
+  /** The pool's swap fee as a fraction of the trade (DexPaprika reports it in percent; null when absent). */
+  fee: number | null;
   /** ISO time the pool was created, when reported. */
   createdAt: string | null;
 };
@@ -69,10 +78,19 @@ function finite(value: unknown): number | null {
 type RawPool = {
   id?: string;
   dex_id?: string | null;
+  dex_name?: string | null;
   liquidity_usd?: unknown;
   volume_usd_24h?: unknown;
+  volume_usd_7d?: unknown;
+  volume_usd_30d?: unknown;
+  transactions_24h?: unknown;
   price_usd?: unknown;
+  price_change_percentage_5m?: unknown;
+  price_change_percentage_1h?: unknown;
+  price_change_percentage_6h?: unknown;
   price_change_percentage_24h?: unknown;
+  price_change_percentage_48h?: unknown;
+  fee?: unknown;
   created_at?: string | null;
 };
 
@@ -89,12 +107,19 @@ export function normalizeDexPools(payload: unknown): DexPool[] {
     pools.push({
       pairAddress: raw.id,
       dexId: typeof raw.dex_id === "string" && raw.dex_id ? raw.dex_id : null,
+      dexName: typeof raw.dex_name === "string" && raw.dex_name ? raw.dex_name : null,
       liquidityUsd: finite(raw.liquidity_usd),
       volume24hUsd: finite(raw.volume_usd_24h),
+      volume7dUsd: finite(raw.volume_usd_7d),
+      volume30dUsd: finite(raw.volume_usd_30d),
+      transactions24h: finite(raw.transactions_24h),
       priceUsd: finite(raw.price_usd),
+      priceChange5mPct: finite(raw.price_change_percentage_5m),
+      priceChange1hPct: finite(raw.price_change_percentage_1h),
+      priceChange6hPct: finite(raw.price_change_percentage_6h),
       priceChange24hPct: finite(raw.price_change_percentage_24h),
-      fdvUsd: null,
-      marketCapUsd: null,
+      priceChange48hPct: finite(raw.price_change_percentage_48h),
+      fee: finite(raw.fee),
       createdAt: Number.isFinite(created) ? new Date(created).toISOString() : null,
     });
   }

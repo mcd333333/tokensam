@@ -3,7 +3,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "../supabase/admin.ts";
 import { latestPerMetric, mergeById, readLatestObservations, readObservationWindow } from "./observation-reads.ts";
 import { readLivePrices } from "../providers/live-price-source.ts";
-import { onchainIdentityFor } from "../providers/run-dex-pool-collection.ts";
+import { onchainIdentityFor } from "../providers/run-dexpaprika-collection.ts";
 import { COINBASE_CHANGE_NOTE, COINBASE_PRICE_NOTE } from "../providers/coinbase.ts";
 import { BINANCE_CHANGE_NOTE, BINANCE_PRICE_NOTE } from "../providers/binance.ts";
 import { memoizeWithTtl } from "./ttl-cache.ts";
@@ -752,10 +752,10 @@ export async function readDexPools(
 }> {
   const empty = { pools: [], dexes: [], primary: null, collectedAt: null };
   try {
-    const { data, error } = await client.from("token_dex_pools").select("fetched_at,pools").eq("token_id", tokenId).maybeSingle();
+    const { data, error } = await client.from("token_dex_pools").select("pools_at,pools").eq("token_id", tokenId).maybeSingle();
     if (error) throw error;
-    const row = data as { fetched_at?: string; pools?: unknown } | null;
-    if (!row?.fetched_at || !Array.isArray(row.pools)) return empty;
+    const row = data as { pools_at?: string; pools?: unknown } | null;
+    if (!row?.pools_at || !Array.isArray(row.pools)) return empty;
     const raw = (row.pools as Record<string, unknown>[]).filter((pool) => typeof pool?.pairAddress === "string");
     const pools = raw.map((pool) => ({
       pairAddress: pool.pairAddress as string,
@@ -772,7 +772,7 @@ export async function readDexPools(
       primary: lead
         ? { priceChange24hPct: numberValue(lead.priceChange24hPct), fdvUsd: numberValue(lead.fdvUsd), marketCapUsd: numberValue(lead.marketCapUsd) }
         : null,
-      collectedAt: row.fetched_at,
+      collectedAt: row.pools_at,
     };
   } catch (error) {
     console.error(`DEX pool read failed for ${tokenId} (shown as unavailable):`, error);
