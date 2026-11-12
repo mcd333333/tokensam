@@ -88,7 +88,9 @@ export class PriceStream {
     // A freshly opened connection has little or no data yet: give the first frames a moment to arrive
     // (until most of the subscribed symbols have reported, or the wait runs out).
     const expected = this.source === "binance" ? Object.keys(binanceSymbols).length : Object.keys(coinbaseProducts).length;
-    const deadline = Date.now() + FIRST_DATA_WAIT_MS;
+    // The wait applies only to a connection that has just opened. A source that never reaches the threshold
+    // (Binance only sends a symbol when it trades, so quiet tokens stay missing) must not stall every request.
+    const deadline = (this.connectedAt ?? 0) + FIRST_DATA_WAIT_MS;
     while (this.socket && this.prices.size < expected * 0.9 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
 
     const now = Date.now();
