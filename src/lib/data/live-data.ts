@@ -317,6 +317,13 @@ function changeOverHorizon(
   return Number.isFinite(change) ? change : null;
 }
 
+/**
+ * A day built from raw readings (no stored daily summary yet) needs at least this many of them, so a day that was only
+ * partly collected (an outage, or the day collection began) cannot stand in for a full-day average. Collection runs
+ * every 15 minutes, about 96 a day; 72 is three quarters of that.
+ */
+export const MIN_RAW_READINGS_PER_DAY = 72;
+
 /** Completed UTC-day values, using stored means or point-in-time snapshots after retention rolls a day up. */
 function dailyAverageSeries(
   rows: DbObservation[],
@@ -349,7 +356,7 @@ function dailyAverageSeries(
   }
   return [...dailyMeans.entries()].map(([day, entry]) => ({
     day,
-    value: entry.aggregate ?? (entry.count > 0 ? entry.sum / entry.count : NaN),
+    value: entry.aggregate ?? (entry.count >= MIN_RAW_READINGS_PER_DAY ? entry.sum / entry.count : NaN),
     collectedAt: entry.collectedAt,
   })).filter((point) => Number.isFinite(point.value)).sort((a, b) => a.day - b.day);
 }
@@ -363,7 +370,7 @@ function latestConsecutiveDailyChange(points: { day: number; value: number }[]):
 }
 
 function volumeToMarketCapDailyAverageChange(rows: DbObservation[], tokenId: string, asOfMs: number): number | null {
-  const marketCaps = new Map(dailyAverageSeries(rows, tokenId, "market_cap_usd", true, asOfMs).map((point) => [point.day, point.value]));
+  const marketCaps = new Map(dailyAverageSeries(rows, tokenId, "market_cap_usd", false, asOfMs).map((point) => [point.day, point.value]));
   const ratios = dailyAverageSeries(rows, tokenId, "volume_24h_usd", false, asOfMs)
     .filter((point) => marketCaps.has(point.day))
     .map((point) => ({ day: point.day, value: point.value / marketCaps.get(point.day)! }));
@@ -400,7 +407,8 @@ export function buildDashboardTokens(
       collectedAt: latestTvl.collected_at,
       note: "Calculated server-side from DeFiLlama TVL observations approximately 30 days apart.",
     };
-    const marketCapDailyAverages = dailyAverageSeries(observations, token.id, "market_cap_usd", true, now);
+    // A stored daily summary is used when there is one; otherwise the mean of that day's raw readings (see MIN_RAW_READINGS_PER_DAY).
+    const marketCapDailyAverages = dailyAverageSeries(observations, token.id, "market_cap_usd", false, now);
     const marketCapChangeDailyAveragePct = latestConsecutiveDailyChange(marketCapDailyAverages);
     const volumeChange24hPct = changeOverHorizon(observations, token.id, "coingecko", "volume_24h_usd", VOLUME_CHANGE_TARGET_HOURS);
     const volumeToMarketCapChangeDailyAveragePct = volumeToMarketCapDailyAverageChange(observations, token.id, now);
