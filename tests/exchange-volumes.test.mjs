@@ -117,7 +117,7 @@ test("stops at the monthly call cap without making further calls", async () => {
 });
 
 test("reports none_due when every snapshot is fresh", async () => {
-  const now = new Date("2026-11-12T00:00:00Z");
+  const now = new Date("2026-11-13T00:00:00Z");
   const snapshots = mappings.map((row) => ({ token_id: row.token_id, fetched_at: now.toISOString() }));
   const { client, state } = fakeClient({ mappings, snapshots });
   const result = await runExchangeCollection(client, { ...baseOptions, now, maxTokens: 10 });

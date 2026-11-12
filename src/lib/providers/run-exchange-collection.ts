@@ -6,6 +6,11 @@ type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createS
 /** A token is refreshed again once its snapshot is older than this (a daily cadence with slack). */
 export const EXCHANGE_REFRESH_AFTER_MS = 22 * 60 * 60 * 1000;
 /**
+ * Snapshots fetched before this moment predate exchange logos (added to the stored rows on 2026-11-12), so they are
+ * refreshed once regardless of age. Remove after a day: by then every snapshot is newer.
+ */
+export const LOGO_BACKFILL_CUTOFF_MS = Date.parse("2026-11-12T08:50:00Z");
+/**
  * Hard monthly ceiling on tickers calls. The Demo plan allows ~10,000 calls/month and the
  * /coins/markets refresh uses ~5,800 of them (2 calls x 96 runs x 30 days), so this leaves margin.
  * A full daily pass is one call per token (~154 -> ~4,600/month); the cap makes the collector
@@ -55,7 +60,7 @@ export async function runExchangeCollection(
   const fetchedAt = new Map((snapshotsResult.data as { token_id: string; fetched_at: string }[]).map((row) => [row.token_id, Date.parse(row.fetched_at)]));
   // Never-fetched tokens first, then the stalest snapshots; anything fresher than the refresh age is skipped.
   const due = (mappingsResult.data as { token_id: string; external_asset_id: string }[])
-    .filter((row) => row.external_asset_id && now.getTime() - (fetchedAt.get(row.token_id) ?? 0) >= EXCHANGE_REFRESH_AFTER_MS)
+    .filter((row) => row.external_asset_id && ((fetchedAt.get(row.token_id) ?? 0) < LOGO_BACKFILL_CUTOFF_MS || now.getTime() - (fetchedAt.get(row.token_id) ?? 0) >= EXCHANGE_REFRESH_AFTER_MS))
     .sort((a, b) => (fetchedAt.get(a.token_id) ?? 0) - (fetchedAt.get(b.token_id) ?? 0));
 
   const result: ExchangeCollectionResult = {
