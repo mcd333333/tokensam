@@ -1,5 +1,5 @@
 import type { NormalizedObservation, ProviderAsset, ProviderSnapshot } from "./types.ts";
-import { DexPoolApiError, type DexPool } from "./dexpaprika-pools.ts";
+import { DexPoolApiError, rateHeaders, type DexPool } from "./dexpaprika-pools.ts";
 
 /**
  * DexPaprika token-level DEX market data: the on-chain counterpart to CoinGecko's cross-venue market data.
@@ -64,7 +64,7 @@ export async function fetchTokenStats(
     if (response.ok) return (await response.json()) as DexPaprikaTokenStats;
     if (response.status === 404) return null;
     const retryable = response.status === 429 || response.status >= 500;
-    if (!retryable || attempt === 2) throw new DexPoolApiError(`DexPaprika token returned HTTP ${response.status}.`, response.status);
+    if (!retryable || attempt === 2) throw new DexPoolApiError(`DexPaprika token returned HTTP ${response.status} (key: ${apiKey ? "sent" : "none"}${rateHeaders(response)}).`, response.status);
     await sleep(response.status === 429 ? 3_000 : 1_000);
   }
   throw new DexPoolApiError("DexPaprika token request exhausted its retry limit.", null);
@@ -152,3 +152,4 @@ export function buildDexPaprikaSnapshot(
     observations,
   };
 }
+

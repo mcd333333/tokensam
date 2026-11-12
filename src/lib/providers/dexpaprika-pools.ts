@@ -161,8 +161,17 @@ export async function fetchDexPools(
     }
     if (response.ok) return normalizeDexPools(await response.json());
     const retryable = response.status === 429 || response.status >= 500;
-    if (!retryable || attempt === 2) throw new DexPoolApiError(`DexPaprika pools returned HTTP ${response.status}.`, response.status);
+    if (!retryable || attempt === 2) throw new DexPoolApiError(`DexPaprika pools returned HTTP ${response.status} (key: ${apiKey ? "sent" : "none"}${rateHeaders(response)}).`, response.status);
     await sleep(response.status === 429 ? 3_000 : 1_000);
   }
   throw new DexPoolApiError("DexPaprika pools request exhausted its retry limit.", null);
+}
+
+/** Rate-limit headers only (never a response body), so a throttle can be told apart from an exhausted allowance. */
+export function rateHeaders(response: Response): string {
+  const parts = ["retry-after", "x-ratelimit-remaining", "x-ratelimit-limit", "x-ratelimit-reset"]
+    .map((name) => [name, response.headers.get(name)] as const)
+    .filter(([, value]) => value !== null && /^[\w.:-]{1,40}$/.test(value as string))
+    .map(([name, value]) => `${name}=${value}`);
+  return parts.length ? `, ${parts.join(" ")}` : "";
 }
