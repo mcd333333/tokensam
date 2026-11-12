@@ -12,6 +12,8 @@
 const BASE_URL = "https://api.dexpaprika.com";
 const REQUEST_TIMEOUT_MS = 15_000;
 /** Pools kept per token, most liquid first: the search's page-size maximum, so one request per token and it works keyless. */
+import { isPlausibleDexValue } from "./dex-sanity.ts";
+
 export const MAX_POOLS_PER_TOKEN = 100;
 /** Minimum spacing between requests (30/minute with a key; the keyless 15/minute is slower and still served by retries). */
 export const DEX_POOL_REQUEST_INTERVAL_MS = 2_500;
@@ -95,6 +97,11 @@ type RawPool = {
 };
 
 /** Pools in the search response, deduplicated by address, most liquid first, capped. The search is already filtered to the token. */
+/** A per-pool figure when plausible, else null (see dex-sanity.ts). */
+function sane(kind: "usd" | "count" | "price" | "change_pct", value: number | null): number | null {
+  return value !== null && isPlausibleDexValue(kind, value) ? value : null;
+}
+
 export function normalizeDexPools(payload: unknown): DexPool[] {
   const results = (payload as { results?: unknown })?.results;
   if (!Array.isArray(results)) return [];
@@ -108,17 +115,17 @@ export function normalizeDexPools(payload: unknown): DexPool[] {
       pairAddress: raw.id,
       dexId: typeof raw.dex_id === "string" && raw.dex_id ? raw.dex_id : null,
       dexName: typeof raw.dex_name === "string" && raw.dex_name ? raw.dex_name : null,
-      liquidityUsd: finite(raw.liquidity_usd),
-      volume24hUsd: finite(raw.volume_usd_24h),
-      volume7dUsd: finite(raw.volume_usd_7d),
-      volume30dUsd: finite(raw.volume_usd_30d),
-      transactions24h: finite(raw.transactions_24h),
-      priceUsd: finite(raw.price_usd),
-      priceChange5mPct: finite(raw.price_change_percentage_5m),
-      priceChange1hPct: finite(raw.price_change_percentage_1h),
-      priceChange6hPct: finite(raw.price_change_percentage_6h),
-      priceChange24hPct: finite(raw.price_change_percentage_24h),
-      priceChange48hPct: finite(raw.price_change_percentage_48h),
+      liquidityUsd: sane("usd", finite(raw.liquidity_usd)),
+      volume24hUsd: sane("usd", finite(raw.volume_usd_24h)),
+      volume7dUsd: sane("usd", finite(raw.volume_usd_7d)),
+      volume30dUsd: sane("usd", finite(raw.volume_usd_30d)),
+      transactions24h: sane("count", finite(raw.transactions_24h)),
+      priceUsd: sane("price", finite(raw.price_usd)),
+      priceChange5mPct: sane("change_pct", finite(raw.price_change_percentage_5m)),
+      priceChange1hPct: sane("change_pct", finite(raw.price_change_percentage_1h)),
+      priceChange6hPct: sane("change_pct", finite(raw.price_change_percentage_6h)),
+      priceChange24hPct: sane("change_pct", finite(raw.price_change_percentage_24h)),
+      priceChange48hPct: sane("change_pct", finite(raw.price_change_percentage_48h)),
       fee: finite(raw.fee),
       createdAt: Number.isFinite(created) ? new Date(created).toISOString() : null,
     });

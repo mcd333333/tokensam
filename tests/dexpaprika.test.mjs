@@ -362,6 +362,56 @@ test("calculated DEX metrics come from DexPaprika observations and the stored to
   assert.ok(["dex_aggregate_liquidity_usd", "dex_primary_pair_liquidity_usd", "fdv_to_tvl"].every((id) => none[id].status === "unavailable" && none[id].value === null));
 });
 
+test("sanity bounds: an impossible provider figure becomes unavailable, never clamped or zeroed", async () => {
+  const { isPlausibleDexValue, plausibleDexValue, dexValueKind } = await import("../src/lib/providers/dex-sanity.ts");
+  assert.equal(plausibleDexValue("usd", 43_123_165_268_214), null, "the $43 trillion liquidity seen for one token");
+  assert.equal(plausibleDexValue("usd", 25_000_000), 25_000_000);
+  assert.equal(plausibleDexValue("usd", -1), null);
+  assert.equal(isPlausibleDexValue("change_pct", -150), false);
+  assert.equal(isPlausibleDexValue("change_pct", 2_500), true, "a large gain on a thin pool is possible");
+  assert.equal(isPlausibleDexValue("price", 0), false);
+  assert.equal(dexValueKind("dex_pool_count"), "pool_count");
+  assert.equal(dexValueKind("buys_24h_count"), "count");
+  assert.equal(dexValueKind("dex_price_change_1h_pct"), "change_pct");
+  assert.equal(dexValueKind("liquidity_usd"), "usd");
+  const bad = buildDexPaprikaSnapshot(asset, { ...STATS, summary: { ...STATS.summary, liquidity_usd: 43_123_165_268_214 } }, null, "2026-11-12T08:05:00.000Z");
+  const liquidity = bad.observations.find((item) => item.metricId === "liquidity_usd");
+  assert.equal(liquidity.status, "unavailable");
+  assert.equal(liquidity.value, null);
+  assert.match(liquidity.note, /implausible/);
+  assert.equal(bad.observations.find((item) => item.metricId === "volume_24h_usd").status, "available", "other figures are untouched");
+  const pools = normalizeDexPools({ results: [{ id: "0xp", dex_id: "uniswap_v3", liquidity_usd: 9e15, volume_usd_24h: 100 }] });
+  assert.equal(pools[0].liquidityUsd, null);
+  assert.equal(pools[0].volume24hUsd, 100);
+});
+
+test("DEX boxes: readable names (never raw addresses), unnamed pools share one box, logos only where the exchange matches", async () => {
+  // A token no other test uses: profiles are memoised per token id.
+  const first = dexPoolAssets[5];
+  const data = await profileFor(first.tokenId, { pools_at: NOW_ISO, pools: [
+    { pairAddress: "0xa1", dexId: "uniswap_v3", dexName: "Uniswap V3", liquidityUsd: 9_000_000, volume24hUsd: 4_000_000 },
+    { pairAddress: "0xa2", dexId: "0xF14421F0BCfE4c19a2d0a9c1b8e2b0c9a7a1d111", dexName: null, liquidityUsd: 100_000, volume24hUsd: 1_000 },
+    { pairAddress: "0xa3", dexId: "0x2f3Db9ba0fEc19a2d0a9c1b8e2b0c9a7a1d222", dexName: null, liquidityUsd: 50_000, volume24hUsd: 500 },
+    { pairAddress: "0xa4", dexId: "meteora_dlmm", dexName: null, liquidityUsd: 20_000, volume24hUsd: 100 },
+  ] }, [["volume_24h_usd", 1]]);
+  data.onchainMarkets.dexLogos = { uniswap_v3: "https://example.test/uni.png" };
+  const model = buildProfileModel(data);
+  const labels = model.dexMarkets.groups.map((group) => group.label);
+  assert.deepEqual(labels, ["Uniswap V3", "Unnamed DEX", "Meteora Dlmm"]);
+  assert.equal(model.dexMarkets.groups[1].pools, 2, "address-only pools are merged into one Unnamed DEX box");
+  assert.ok(!labels.some((label) => label.startsWith("0x")));
+  assert.equal(model.dexMarkets.groups[0].logo, "https://example.test/uni.png");
+  assert.equal(model.dexMarkets.groups[1].logo, null);
+  assert.ok(model.dexMarkets.pools.every((pool) => !pool.dexLabel.startsWith("0x")));
+});
+
+test("logo aliases only name real, distinct CoinGecko ids, and ids match exactly otherwise", async () => {
+  const { coingeckoIdForDex, dexLogoAliases } = await import("../src/data/dex-logo-aliases.ts");
+  assert.deepEqual(coingeckoIdForDex("orca"), ["orca"]);
+  assert.deepEqual(coingeckoIdForDex("uniswap_v4"), ["uniswap_v4", "uniswap-v4-ethereum"]);
+  for (const [dexId, geckoId] of Object.entries(dexLogoAliases)) assert.notEqual(dexId, geckoId);
+});
+
 let failures = 0;
 for (const { name, run } of cases) {
   try { await run(); console.log(`PASS ${name}`); }

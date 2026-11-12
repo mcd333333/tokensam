@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { plausibleDexValue } from "../providers/dex-sanity.ts";
 
 /** v2: source-scope enforcement and scope-explicit metric names (token-centric architecture). */
 export const CALCULATION_VERSION = "7";
@@ -463,11 +464,12 @@ export function calculateTokenMetrics(
   // most liquid stored pool.
   const aggregateLiquidityObs = metricSource(tokenRows, "dexpaprika", "liquidity_usd");
   const aggregateVolumeObs = metricSource(tokenRows, "dexpaprika", "volume_24h_usd");
-  const rawLiquidity = valueOf(aggregateLiquidityObs);
-  const rawVolume = valueOf(aggregateVolumeObs);
+  // Figures outside the plausibility bounds (see dex-sanity.ts), possibly stored before those bounds existed, are unavailable.
+  const rawLiquidity = plausibleDexValue("usd", valueOf(aggregateLiquidityObs));
+  const rawVolume = plausibleDexValue("usd", valueOf(aggregateVolumeObs));
   const primary = poolList?.pools[0];
-  const primaryLiquidity = numberField(primary?.liquidityUsd);
-  const primaryVolume = numberField(primary?.volume24hUsd);
+  const primaryLiquidity = plausibleDexValue("usd", numberField(primary?.liquidityUsd));
+  const primaryVolume = plausibleDexValue("usd", numberField(primary?.volume24hUsd));
   const poolCount = numeric(valueOf(metricSource(tokenRows, "dexpaprika", "dex_pool_count")));
   const aggregateLiquidityCalc = rawLiquidity === null
     ? unavailable("DexPaprika reported no token-wide liquidity.", ref(aggregateLiquidityObs))

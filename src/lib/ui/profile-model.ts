@@ -23,7 +23,7 @@ export type SupplyComposition = { circulatingPct: number; remainingPct: number; 
 /** Pool rows listed on the profile; the rest are summarised as "N more pools". */
 export const MAX_POOLS_LISTED = 30;
 /** One decentralised exchange (DEX) box: its pools' combined liquidity and 24h volume for this token, among the stored pools. */
-export type DexGroupRow = { id: string; label: string; liquidity: string | null; volume24h: string | null; sharePct: number; pools: number };
+export type DexGroupRow = { id: string; label: string; logo: string | null; liquidity: string | null; volume24h: string | null; sharePct: number; pools: number };
 export type PoolRow = { id: string; dexLabel: string; pairAddress: string; liquidity: string | null; volume24h: string | null };
 /** One exchange row: its name, share of its group's listed volume and its 24h volume for this token. */
 export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number; logo: string | null };
@@ -123,6 +123,18 @@ function dexReason(reason: CoverageReason | null, isNative: boolean): string {
 /** Turns a raw on-chain DEX identifier ("uniswap_v3") into a readable label ("Uniswap V3"). Not a provider name. */
 function humanizeDexId(id: string): string {
   return id.split(/[-_]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(" ");
+}
+
+/** DexPaprika sometimes gives a contract address where a DEX id or name belongs. */
+function looksLikeAddress(value: string): boolean {
+  return /^0x[0-9a-f]{8,}$/i.test(value) || (!/\s/.test(value) && value.length > 30);
+}
+
+/** Readable DEX name: DexPaprika's own name, else the humanised id, else "Unnamed DEX" when only an address is known. */
+function dexLabelFor(dexId: string | null | undefined, dexName: string | null | undefined): string {
+  if (dexName && !looksLikeAddress(dexName)) return dexName;
+  if (dexId && !looksLikeAddress(dexId)) return humanizeDexId(dexId);
+  return "Unnamed DEX";
 }
 
 export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
@@ -282,15 +294,16 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
         .slice(0, MAX_POOLS_LISTED)
         .map((pool) => ({
           id: pool.pairAddress,
-          dexLabel: pool.dexId ? humanizeDexId(pool.dexId) : "Unknown DEX",
+          dexLabel: dexLabelFor(pool.dexId, pool.dexName),
           pairAddress: pool.pairAddress,
           liquidity: formatUsd(pool.liquidityUsd, true),
           volume24h: formatUsd(pool.volume24hUsd, true),
         }));
       const byDex = new Map<string, { label: string; liquidity: number; volume: number; hasLiquidity: boolean; hasVolume: boolean; pools: number }>();
       for (const pool of ranked) {
-        const key = pool.dexId ?? "unknown";
-        const entry = byDex.get(key) ?? { label: pool.dexId ? humanizeDexId(pool.dexId) : "Unknown DEX", liquidity: 0, volume: 0, hasLiquidity: false, hasVolume: false, pools: 0 };
+        // Every pool known only by an address shares one "Unnamed DEX" box instead of one box each.
+        const key = pool.dexId && !looksLikeAddress(pool.dexId) ? pool.dexId : "unnamed";
+        const entry = byDex.get(key) ?? { label: dexLabelFor(pool.dexId, pool.dexName), liquidity: 0, volume: 0, hasLiquidity: false, hasVolume: false, pools: 0 };
         if (pool.liquidityUsd !== null) { entry.liquidity += pool.liquidityUsd; entry.hasLiquidity = true; }
         if (pool.volume24hUsd !== null) { entry.volume += pool.volume24hUsd; entry.hasVolume = true; }
         entry.pools += 1;
@@ -302,6 +315,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
         .map(([key, entry]) => ({
           id: key,
           label: entry.label,
+          logo: onchain.dexLogos?.[key] ?? null,
           liquidity: entry.hasLiquidity ? formatUsd(entry.liquidity, true) : null,
           volume24h: entry.hasVolume ? formatUsd(entry.volume, true) : null,
           sharePct: totalLiquidity > 0 ? (entry.liquidity / totalLiquidity) * 100 : 0,
@@ -312,7 +326,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           available: true,
           scopeLine: "On-chain DEX pools for this exact token address, across every decentralized exchange it was found on.",
           cards,
-          dexes: onchain.dexes.map(humanizeDexId),
+          dexes: [...new Set(onchain.pools.map((pool) => dexLabelFor(pool.dexId, pool.dexName)))],
           groups,
           groupedPools: ranked.length,
           pools,

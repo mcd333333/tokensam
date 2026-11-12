@@ -86,7 +86,7 @@ function DexGroupGrid({ groups }: { groups: DexGroupRow[] }) {
       {groups.map((group) => (
         <li key={group.id} className="exchange-box" title={`${group.label} · ${group.pools} pool${group.pools === 1 ? "" : "s"}`}>
           <span className="exchange-head">
-            <TokenLogo src={null} symbol={group.label} size={22} />
+            <TokenLogo src={group.logo} symbol={group.label} size={22} />
             <span className="exchange-name">{group.label}</span>
           </span>
           <b className="exchange-volume">{group.liquidity ?? "—"}<small> pool liquidity</small></b>

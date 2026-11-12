@@ -7,6 +7,8 @@ import { onchainIdentityFor } from "../../data/onchain-identity.ts";
 import { COINBASE_CHANGE_NOTE, COINBASE_PRICE_NOTE } from "../providers/coinbase.ts";
 import { BINANCE_CHANGE_NOTE, BINANCE_PRICE_NOTE } from "../providers/binance.ts";
 import { memoizeWithTtl } from "./ttl-cache.ts";
+import { dexValueKind, plausibleDexValue } from "../providers/dex-sanity.ts";
+import { coingeckoIdForDex } from "../../data/dex-logo-aliases.ts";
 import { getCacheTtlMultiplierSync, refreshThrottleLevelInBackground } from "../monitoring/quota-tracker.ts";
 import { selectMovers, type Movers } from "../ui/movers.ts";
 import { buildTechnicalIndicators, INDICATOR_METHOD, withExtraIndicators } from "../indicators/build.ts";
@@ -740,17 +742,19 @@ export async function readDexPools(
     const pools = raw.map((pool) => ({
       pairAddress: pool.pairAddress as string,
       dexId: typeof pool.dexId === "string" ? pool.dexId : null,
+      dexName: typeof pool.dexName === "string" ? pool.dexName : null,
       createdAt: typeof pool.createdAt === "string" ? pool.createdAt : null,
-      liquidityUsd: numberValue(pool.liquidityUsd),
-      volume24hUsd: numberValue(pool.volume24hUsd),
-      priceUsd: numberValue(pool.priceUsd),
+      // Rows stored before the plausibility bounds existed are filtered here too (see dex-sanity.ts).
+      liquidityUsd: plausibleDexValue("usd", numberValue(pool.liquidityUsd)),
+      volume24hUsd: plausibleDexValue("usd", numberValue(pool.volume24hUsd)),
+      priceUsd: plausibleDexValue("price", numberValue(pool.priceUsd)),
     }));
     const lead = raw[0];
     return {
       pools,
       dexes: [...new Set(pools.map((pool) => pool.dexId).filter((id): id is string => Boolean(id)))],
       primary: lead
-        ? { priceChange24hPct: numberValue(lead.priceChange24hPct) }
+        ? { priceChange24hPct: plausibleDexValue("change_pct", numberValue(lead.priceChange24hPct)) }
         : null,
       collectedAt: row.pools_at,
     };
@@ -758,6 +762,43 @@ export async function readDexPools(
     console.error(`DEX pool read failed for ${tokenId} (shown as unavailable):`, error);
     return empty;
   }
+}
+
+/** CoinGecko exchange id -> logo, from the stored exchange snapshots of every token. Cached for 6 hours (it rarely changes). */
+const readExchangeLogoMap = memoizeWithTtl(
+  async (client: SupabaseAdminClient): Promise<Map<string, string>> => {
+    const logos = new Map<string, string>();
+    try {
+      const { data, error } = await client.from("token_exchange_volumes").select("exchanges");
+      if (error) throw error;
+      for (const row of (data ?? []) as { exchanges?: unknown }[]) {
+        if (!Array.isArray(row.exchanges)) continue;
+        for (const item of row.exchanges as Record<string, unknown>[]) {
+          if (item?.kind === "dex" && typeof item.id === "string" && typeof item.logo === "string" && item.logo.startsWith("https://") && !logos.has(item.id)) {
+            logos.set(item.id, item.logo);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Exchange logo lookup failed (DEX boxes show no logos):", error);
+    }
+    return logos;
+  },
+  6 * 60 * 60 * 1000,
+  () => "dex-logos",
+);
+
+/** Logo URL for each DEX id among these pools, by exact CoinGecko id or a listed alias; DEXes with no match get none. */
+async function resolveDexLogos(client: SupabaseAdminClient, pools: { dexId: string | null }[]): Promise<Record<string, string>> {
+  const ids = [...new Set(pools.map((pool) => pool.dexId).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return {};
+  const map = await readExchangeLogoMap(client);
+  const out: Record<string, string> = {};
+  for (const id of ids) {
+    const logo = coingeckoIdForDex(id).map((candidate) => map.get(candidate)).find((value): value is string => Boolean(value));
+    if (logo) out[id] = logo;
+  }
+  return out;
 }
 
 /** Latest exchange volume snapshot for a token; optional, so a failed read just omits the section. */
@@ -994,7 +1035,7 @@ async function getLiveTokenProfileUncached(
   // token endpoint values; the 24h price change is the most liquid stored pool's. FDV and market cap are CoinGecko's
   // and shown in Tokenomics, so they are not repeated here.
   const onchainMapping = onchainIdentityFor(tokenId);
-  const dexValue = (metricId: string) => observationValue(observationFor(observations, tokenId, "dexpaprika", metricId));
+  const dexValue = (metricId: string) => plausibleDexValue(dexValueKind(metricId), observationValue(observationFor(observations, tokenId, "dexpaprika", metricId)));
   const onchainMarkets: OnchainMarketsData | null = onchainMapping
     ? {
       network: onchainMapping.chainId === tokenRow.chain_id ? (chain?.name ?? onchainMapping.chainId) : onchainMapping.chainId,
@@ -1006,6 +1047,7 @@ async function getLiveTokenProfileUncached(
       marketCapUsd: null,
       dexes: dexPools.dexes,
       pools: dexPools.pools,
+      dexLogos: await resolveDexLogos(client, dexPools.pools),
       poolCount: dexValue("dex_pool_count"),
       activity: {
         buyVolume24hUsd: dexValue("dex_buy_volume_24h_usd"),

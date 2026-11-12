@@ -115,6 +115,8 @@ export type CalculatedMetricView = {
 export type OnchainPool = {
   pairAddress: string;
   dexId: string | null;
+  /** DexPaprika's readable DEX name, when it supplies one. */
+  dexName?: string | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
   priceUsd: number | null;
@@ -142,6 +144,8 @@ export type OnchainMarketsData = {
   pools: OnchainPool[];
   /** Total pools DexPaprika indexes for the token (the list above shows only the most liquid). */
   poolCount?: number | null;
+  /** Logo URL by DexPaprika DEX id, borrowed from CoinGecko's exchange list where the same exchange is listed there. */
+  dexLogos?: Record<string, string>;
   /** Shorter-window and directional DEX activity (DexPaprika token endpoint); any field may be null. */
   activity?: OnchainActivity;
 };

@@ -1,5 +1,6 @@
 import type { NormalizedObservation, ProviderAsset, ProviderSnapshot } from "./types.ts";
 import { DexPoolApiError, rateHeaders, type DexPool } from "./dexpaprika-pools.ts";
+import { dexValueKind, isPlausibleDexValue } from "./dex-sanity.ts";
 
 /**
  * DexPaprika token-level DEX market data: the on-chain counterpart to CoinGecko's cross-venue market data.
@@ -92,7 +93,9 @@ export function buildDexPaprikaSnapshot(
   const summary = stats?.summary;
   const missing = " Provider field was absent or non-numeric.";
   const make = (metricId: string, value: unknown, sourceField: string, windowDays: number | null, note = DEXPAPRIKA_METRIC_NOTE): NormalizedObservation => {
-    const normalized = finite(value);
+    const parsed = finite(value);
+    const plausible = parsed === null || isPlausibleDexValue(dexValueKind(metricId), parsed);
+    const normalized = plausible ? parsed : null;
     return {
       tokenId: asset.tokenId,
       chainId: asset.chainId,
@@ -105,7 +108,7 @@ export function buildDexPaprikaSnapshot(
       // DEX market data for an exact token address.
       scope: "market",
       sourceField,
-      note: normalized === null ? `${note}${missing}` : note,
+      note: normalized === null ? `${note}${plausible ? missing : " Provider value was implausible and is ignored."}` : note,
     };
   };
 
