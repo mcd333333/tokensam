@@ -12,6 +12,8 @@ export type DexPoolCollectionResult = {
   failed: number;
   stoppedReason: "done" | "slice_limit" | "deadline" | "rate_limited" | "none_due";
   dueRemaining: number;
+  /** First failure this call, as "<token> <message>" (message only, never a response body). */
+  firstError?: string;
 };
 
 /** Tokens with an exact DEX Screener chain/address identity: the only ones that can have pools. */
@@ -65,7 +67,9 @@ export async function runDexPoolCollection(
       result.dueRemaining -= 1;
     } catch (caught) {
       result.failed += 1;
-      console.error(`[dex-pools] ${asset.tokenId} failed: ${caught instanceof Error ? caught.message : "unknown error"}`);
+      const message = caught instanceof Error ? caught.message : "unknown error";
+      console.error(`[dex-pools] ${asset.tokenId} failed: ${message}`);
+      result.firstError ??= `${asset.tokenId} ${message}`.slice(0, 300);
       // A 429 means every further call this slice would fail too.
       if (caught instanceof DexPoolApiError && caught.status === 429) { result.stoppedReason = "rate_limited"; break; }
     }

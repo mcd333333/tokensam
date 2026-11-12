@@ -27,7 +27,12 @@ export async function GET(request: Request): Promise<Response> {
   const url = new URL(request.url);
   const maxTokens = Math.min(positiveInteger(url.searchParams.get("slice")) ?? DEFAULT_SLICE, MAX_SLICE);
   try {
-    const result = await runDexPoolCollection(createSupabaseAdminClient(), { maxTokens, deadlineAt: Date.now() + BUDGET_MS });
+    const client = createSupabaseAdminClient();
+    const result = await runDexPoolCollection(client, { maxTokens, deadlineAt: Date.now() + BUDGET_MS });
+    // Persist the outcome so a failing collector can be diagnosed from the database (best effort).
+    await client.from("collector_status")
+      .upsert({ job: "dex-pools", updated_at: new Date().toISOString(), result }, { onConflict: "job" })
+      .then(({ error }) => { if (error) console.error(`[dex-pools] status write failed: ${error.message}`); });
     console.log(`[dex-pools] ${result.succeeded}/${result.attempted} ok, ${result.failed} failed, stopped: ${result.stoppedReason}, ${result.dueRemaining} due.`);
     const failed = result.failed > 0 && result.succeeded === 0;
     return Response.json({ status: failed ? "failed" : "ok", ...result }, { status: failed ? 500 : 200 });
