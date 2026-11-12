@@ -352,6 +352,15 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .pool-figures span { display: grid; gap: 1px; color: var(--ink-strong); font-size: 13px; font-weight: 600; text-align: right; }
 .pool-figures small { color: var(--subtle); font-size: 11px; font-weight: 400; }
 .exchange-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+.exchange-box { position: relative; }
+.exchange-box:focus-visible { outline: 1px solid var(--line-strong); }
+.pair-card { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 20; display: none; min-width: 190px; max-width: 260px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--surface-raised); box-shadow: 0 8px 24px rgb(0 0 0 / 45%); pointer-events: none; }
+.exchange-box:hover > .pair-card, .exchange-box:focus-visible > .pair-card { display: block; }
+.exchange-box:hover, .exchange-box:focus-visible { z-index: 21; }
+.pair-card-title { display: block; margin-bottom: 6px; color: var(--gold); font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.pair-card ul { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; }
+.pair-card li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: var(--ink); font-size: 12.5px; }
+.pair-card li b { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
 .exchange-box { display: grid; gap: 6px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--radius); background: var(--surface); }
 .exchange-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .exchange-name { overflow: hidden; color: var(--ink); font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }

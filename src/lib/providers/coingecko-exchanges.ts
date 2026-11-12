@@ -8,7 +8,12 @@ import { CoinGeckoApiError, MIN_REQUEST_INTERVAL_MS, getCoinGeckoConfig, retryAf
  */
 
 export type ExchangeKind = "cex" | "dex";
-export type ExchangeVolume = { id: string; name: string; kind: ExchangeKind; volumeUsd: number; pairs: number; /** CoinGecko-hosted exchange logo (https), when it supplies one. */ logo?: string };
+/** One trading pair on an exchange (centralised venues only: a decentralised ticker names contract addresses). */
+export type ExchangePair = { pair: string; volumeUsd: number };
+export type ExchangeVolume = { id: string; name: string; kind: ExchangeKind; volumeUsd: number; pairs: number; /** CoinGecko-hosted exchange logo (https), when it supplies one. */ logo?: string; /** The exchange's largest pairs for this token by 24h USD volume. */ pairList?: ExchangePair[] };
+
+/** Pairs kept per centralised exchange. */
+export const MAX_PAIRS_PER_EXCHANGE = 8;
 
 type RawTicker = {
   base?: unknown;
@@ -60,6 +65,9 @@ export function aggregateExchangeVolumes(tickers: unknown): ExchangeVolume[] {
     if (!entry.logo && typeof logo === "string" && /^https:\/\//.test(logo)) entry.logo = logo;
     entry.volumeUsd += volume;
     entry.pairs += 1;
+    if (kind === "cex" && typeof raw.base === "string" && typeof raw.target === "string" && raw.base.length <= 20 && raw.target.length <= 20) {
+      (entry.pairList ??= []).push({ pair: `${raw.base}/${raw.target}`, volumeUsd: Math.round(volume) });
+    }
     byExchange.set(key, entry);
   }
   const top = (kind: ExchangeKind, limit: number) => [...byExchange.values()]
@@ -67,7 +75,14 @@ export function aggregateExchangeVolumes(tickers: unknown): ExchangeVolume[] {
     .sort((a, b) => b.volumeUsd - a.volumeUsd)
     .slice(0, limit);
   return [...top("cex", MAX_CEX_PER_TOKEN), ...top("dex", MAX_DEX_PER_TOKEN)]
-    .map((entry) => ({ ...entry, volumeUsd: Math.round(entry.volumeUsd) }));
+    .map((entry) => {
+      const { pairList, ...rest } = entry;
+      return {
+        ...rest,
+        volumeUsd: Math.round(entry.volumeUsd),
+        ...(pairList ? { pairList: pairList.sort((a, b) => b.volumeUsd - a.volumeUsd).slice(0, MAX_PAIRS_PER_EXCHANGE) } : {}),
+      };
+    });
 }
 
 export { MIN_REQUEST_INTERVAL_MS as EXCHANGE_REQUEST_INTERVAL_MS };

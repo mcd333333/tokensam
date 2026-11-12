@@ -439,6 +439,27 @@ test("Exchanges lists centralised venues only when DEX Markets covers the token;
   assert.equal(bare.exchanges.eyebrow, "Centralised & decentralised exchanges");
 });
 
+test("pool pairs: the other token is labelled by symbol when well known, else a shortened address", async () => {
+  const UNI = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984";
+  const pools = normalizeDexPools({ results: [
+    { id: "0xp1", dex_id: "uniswap_v3", tokens: [{ id: UNI }, { id: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" }], liquidity_usd: 9 },
+    { id: "0xp2", dex_id: "uniswap_v3", tokens: [{ id: "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" }, { id: UNI }], liquidity_usd: 8 },
+    { id: "0xp3", dex_id: "uniswap_v3", tokens: [{ id: UNI }, { id: "0x1234567890abcdef1234567890abcdef12345678" }], liquidity_usd: 7 },
+    { id: "0xp4", dex_id: "uniswap_v3", liquidity_usd: 6 },
+  ] }, { network: "ethereum", tokenAddress: UNI });
+  assert.deepEqual(pools.map((pool) => pool.quote), ["WETH", "USDC", "0x1234…5678", null]);
+  // The hover card lines on a DEX box: token symbol / quote, with the pool's liquidity, largest first.
+  const token = dexPoolAssets[9];
+  const data = await profileFor(token.tokenId, { pools_at: NOW_ISO, pools: [
+    { pairAddress: "0xa1", dexId: "uniswap_v3", dexName: "Uniswap V3", quote: "WETH", liquidityUsd: 9_000_000, volume24hUsd: 1 },
+    { pairAddress: "0xa2", dexId: "uniswap_v3", dexName: "Uniswap V3", quote: "USDC", liquidityUsd: 1_000_000, volume24hUsd: 1 },
+  ] }, [["volume_24h_usd", 1]]);
+  data.onchainMarkets.dexLogos = { uniswap_v3: "https://example.test/uni.png" };
+  const lines = buildProfileModel(data).dexMarkets.groups[0].pairLines;
+  assert.deepEqual(lines.map((line) => line.pair), [`${data.token.symbol}/WETH`, `${data.token.symbol}/USDC`]);
+  assert.equal(lines[0].figure, "$9M liquidity");
+});
+
 let failures = 0;
 for (const { name, run } of cases) {
   try { await run(); console.log(`PASS ${name}`); }

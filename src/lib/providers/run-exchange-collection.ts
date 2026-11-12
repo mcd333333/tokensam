@@ -7,10 +7,10 @@ type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createS
 /** A token is refreshed again once its snapshot is older than this (a daily cadence with slack). */
 export const EXCHANGE_REFRESH_AFTER_MS = 22 * 60 * 60 * 1000;
 /**
- * Snapshots fetched before this moment predate exchange logos (added to the stored rows on 2026-11-12), so they are
- * refreshed once regardless of age. Remove after a day: by then every snapshot is newer.
+ * Snapshots fetched before this moment predate exchange logos and per-exchange pair lists (added to the stored rows on
+ * 2026-11-12), so they are refreshed once regardless of age. Remove after a day: by then every snapshot is newer.
  */
-export const LOGO_BACKFILL_CUTOFF_MS = Date.parse("2026-11-12T08:50:00Z");
+export const LOGO_BACKFILL_CUTOFF_MS = Date.parse("2026-11-12T12:50:00Z");
 /**
  * Hard monthly ceiling on tickers calls. The Demo plan allows ~10,000 calls/month and the
  * /coins/markets refresh uses ~5,800 of them (2 calls x 96 runs x 30 days), so this leaves margin.

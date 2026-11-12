@@ -743,6 +743,7 @@ export async function readDexPools(
       pairAddress: pool.pairAddress as string,
       dexId: typeof pool.dexId === "string" ? pool.dexId : null,
       dexName: typeof pool.dexName === "string" ? pool.dexName : null,
+      quote: typeof pool.quote === "string" ? pool.quote : null,
       createdAt: typeof pool.createdAt === "string" ? pool.createdAt : null,
       // Rows stored before the plausibility bounds existed are filtered here too (see dex-sanity.ts).
       liquidityUsd: plausibleDexValue("usd", numberValue(pool.liquidityUsd)),
@@ -823,7 +824,10 @@ export async function readExchangeVolumes(
     if (!row?.fetched_at || !Array.isArray(row.exchanges)) return null;
     const exchanges = (row.exchanges as Record<string, unknown>[])
       .filter((item) => typeof item?.id === "string" && typeof item?.name === "string" && typeof item?.volumeUsd === "number")
-      .map((item) => ({ id: item.id as string, name: item.name as string, kind: (item.kind === "dex" ? "dex" : "cex") as "cex" | "dex", volumeUsd: item.volumeUsd as number, pairs: typeof item.pairs === "number" ? item.pairs : 0, logo: typeof item.logo === "string" && item.logo.startsWith("https://") ? item.logo : null }));
+      .map((item) => ({ id: item.id as string, name: item.name as string, kind: (item.kind === "dex" ? "dex" : "cex") as "cex" | "dex", volumeUsd: item.volumeUsd as number, pairs: typeof item.pairs === "number" ? item.pairs : 0, logo: typeof item.logo === "string" && item.logo.startsWith("https://") ? item.logo : null,
+        pairList: Array.isArray(item.pairList)
+          ? (item.pairList as Record<string, unknown>[]).filter((entry) => typeof entry?.pair === "string" && typeof entry?.volumeUsd === "number").map((entry) => ({ pair: entry.pair as string, volumeUsd: entry.volumeUsd as number }))
+          : undefined }));
     // An exchange stored without a logo (a snapshot from before logos were collected) borrows it from the logo list.
     if (exchanges.some((item) => !item.logo)) {
       const map = await readExchangeLogoMap(client);

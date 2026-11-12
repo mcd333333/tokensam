@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { LiveTokenProfileData } from "@/types/token";
-import { buildProfileModel, type Card, type DexGroupRow, type ExchangeRow, type PoolRow } from "@/lib/ui/profile-model";
+import { buildProfileModel, type Card, type DexGroupRow, type ExchangeRow, type PairLine, type PoolRow } from "@/lib/ui/profile-model";
 import { buildProfilePayload, formatProfilePayloadText } from "@/lib/analysis/profile-payload";
 import { formatChange, formatUsd, shortAddress } from "@/lib/ui/format";
 import { HistoryCharts } from "@/components/HistoricalSection";
@@ -79,12 +79,28 @@ function PoolList({ pools }: { pools: PoolRow[] }) {
   );
 }
 
+/** Hover (and keyboard focus) card listing a venue's trading pairs. Renders nothing when no pairs are known. */
+function PairCard({ title, lines }: { title: string; lines: PairLine[] }) {
+  if (lines.length === 0) return null;
+  return (
+    <div className="pair-card" role="tooltip">
+      <span className="pair-card-title">{title}</span>
+      <ul>
+        {lines.map((line, index) => (
+          <li key={`${line.pair}-${index}`}><span>{line.pair}</span>{line.figure ? <b>{line.figure}</b> : null}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Compact boxes, one per DEX: combined liquidity and 24h volume of its pools for this token, and its share of liquidity. */
 function DexGroupGrid({ groups }: { groups: DexGroupRow[] }) {
   return (
     <ul className="exchange-grid">
       {groups.map((group) => (
-        <li key={group.id} className="exchange-box" title={`${group.label} · ${group.pools} pool${group.pools === 1 ? "" : "s"}`}>
+        <li key={group.id} className="exchange-box" tabIndex={group.pairLines.length > 0 ? 0 : undefined}>
+          <PairCard title={`${group.label} · top pairs`} lines={group.pairLines} />
           <span className="exchange-head">
             <TokenLogo src={group.logo} symbol={group.label} size={22} />
             <span className="exchange-name">{group.label}</span>
@@ -104,7 +120,8 @@ function ExchangeList({ rows }: { rows: ExchangeRow[] }) {
   return (
     <ul className="exchange-grid">
       {rows.map((row) => (
-        <li key={row.id} className="exchange-box" title={`${row.name} · ${row.pairs} pair${row.pairs === 1 ? "" : "s"}`}>
+        <li key={row.id} className="exchange-box" tabIndex={row.pairLines.length > 0 ? 0 : undefined}>
+          <PairCard title={`${row.name} · top pairs by volume`} lines={row.pairLines} />
           <span className="exchange-head">
             <TokenLogo src={row.logo} symbol={row.name} size={22} />
             <span className="exchange-name">{row.name}</span>

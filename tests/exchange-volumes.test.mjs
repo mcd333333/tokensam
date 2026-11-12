@@ -21,8 +21,8 @@ test("aggregates volume and pair count per exchange, sorted by volume", () => {
     ticker("gdax", "Coinbase Exchange", "BTC", "USD", 900),
   ]);
   assert.deepEqual(out, [
-    { id: "gdax", name: "Coinbase Exchange", kind: "cex", volumeUsd: 900, pairs: 1 },
-    { id: "binance", name: "Binance", kind: "cex", volumeUsd: 750, pairs: 2 },
+    { id: "gdax", name: "Coinbase Exchange", kind: "cex", volumeUsd: 900, pairs: 1, pairList: [{ pair: "BTC/USD", volumeUsd: 900 }] },
+    { id: "binance", name: "Binance", kind: "cex", volumeUsd: 750, pairs: 2, pairList: [{ pair: "BTC/USDT", volumeUsd: 600 }, { pair: "BTC/USDC", volumeUsd: 150 }] },
   ]);
 });
 
@@ -212,6 +212,19 @@ test("the logo pull runs once, then only when the list is a month old", async ()
   assert.equal(db.rows("exchange_logos").length, 2, "upserted by id, not duplicated");
   const empty = await runExchangeLogoPull(createFakeSupabase().client, { now, fetchLogos: async () => [] });
   assert.equal(empty.status, "failed");
+});
+
+test("centralised exchanges keep their largest pairs by volume; decentralised tickers (addresses) keep none", () => {
+  const rows = aggregateExchangeVolumes([
+    ticker("binance", "Binance", "UNI", "USDT", 600), ticker("binance", "Binance", "UNI", "BTC", 250), ticker("binance", "Binance", "UNI", "USDC", 150),
+    ticker("somedex", "SomeDex", "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984", "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", 300, { token_info_url: "https://x.test" }),
+  ]);
+  const binance = rows.find((row) => row.id === "binance");
+  assert.deepEqual(binance.pairList, [{ pair: "UNI/USDT", volumeUsd: 600 }, { pair: "UNI/BTC", volumeUsd: 250 }, { pair: "UNI/USDC", volumeUsd: 150 }]);
+  assert.equal(rows.find((row) => row.id === "somedex").pairList, undefined);
+  const many = aggregateExchangeVolumes(Array.from({ length: 12 }, (_, i) => ticker("big", "Big", "UNI", `Q${i}`, 100 + i)));
+  assert.equal(many[0].pairList.length, 8, "at most 8 pairs per exchange");
+  assert.equal(many[0].pairList[0].pair, "UNI/Q11");
 });
 
 let failures = 0;

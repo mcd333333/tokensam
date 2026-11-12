@@ -13,6 +13,7 @@ const BASE_URL = "https://api.dexpaprika.com";
 const REQUEST_TIMEOUT_MS = 15_000;
 /** Pools kept per token, most liquid first: the search's page-size maximum, so one request per token and it works keyless. */
 import { isPlausibleDexValue } from "./dex-sanity.ts";
+import { quoteLabel } from "../../data/dex-quote-tokens.ts";
 
 export const MAX_POOLS_PER_TOKEN = 100;
 /** Minimum spacing between requests (30/minute with a key; the keyless 15/minute is slower and still served by retries). */
@@ -45,6 +46,8 @@ export type DexPool = {
   dexId: string | null;
   /** Display name of the DEX, e.g. "Uniswap V3". */
   dexName: string | null;
+  /** The pool's other token: a well-known symbol ("WETH") or a shortened address. */
+  quote?: string | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
   volume7dUsd: number | null;
@@ -94,15 +97,24 @@ type RawPool = {
   price_change_percentage_48h?: unknown;
   fee?: unknown;
   created_at?: string | null;
+  tokens?: { id?: unknown }[] | null;
 };
 
 /** Pools in the search response, deduplicated by address, most liquid first, capped. The search is already filtered to the token. */
+/** The pool's token that is not the requested one, labelled for display; null when it cannot be told. */
+function quoteOf(raw: RawPool, context: { network?: string; tokenAddress?: string }): string | null {
+  if (!context.network || !context.tokenAddress || !Array.isArray(raw.tokens)) return null;
+  const self = context.tokenAddress.toLowerCase();
+  const other = raw.tokens.map((token) => (typeof token?.id === "string" ? token.id : null)).find((id): id is string => id !== null && id.toLowerCase() !== self);
+  return other ? quoteLabel(context.network, other) : null;
+}
+
 /** A per-pool figure when plausible, else null (see dex-sanity.ts). */
 function sane(kind: "usd" | "count" | "price" | "change_pct", value: number | null): number | null {
   return value !== null && isPlausibleDexValue(kind, value) ? value : null;
 }
 
-export function normalizeDexPools(payload: unknown): DexPool[] {
+export function normalizeDexPools(payload: unknown, context: { network?: string; tokenAddress?: string } = {}): DexPool[] {
   const results = (payload as { results?: unknown })?.results;
   if (!Array.isArray(results)) return [];
   const seen = new Set<string>();
@@ -115,6 +127,7 @@ export function normalizeDexPools(payload: unknown): DexPool[] {
       pairAddress: raw.id,
       dexId: typeof raw.dex_id === "string" && raw.dex_id ? raw.dex_id : null,
       dexName: typeof raw.dex_name === "string" && raw.dex_name ? raw.dex_name : null,
+      quote: quoteOf(raw, context),
       liquidityUsd: sane("usd", finite(raw.liquidity_usd)),
       volume24hUsd: sane("usd", finite(raw.volume_usd_24h)),
       volume7dUsd: sane("usd", finite(raw.volume_usd_7d)),
@@ -166,7 +179,7 @@ export async function fetchDexPools(
       await sleep(1_000);
       continue;
     }
-    if (response.ok) return normalizeDexPools(await response.json());
+    if (response.ok) return normalizeDexPools(await response.json(), { network, tokenAddress });
     const retryable = response.status === 429 || response.status >= 500;
     if (!retryable || attempt === 2) throw new DexPoolApiError(`DexPaprika pools returned HTTP ${response.status} (key: ${apiKey ? "sent" : "none"}${rateHeaders(response)}).`, response.status);
     await sleep(response.status === 429 ? 3_000 : 1_000);

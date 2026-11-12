@@ -22,11 +22,15 @@ export type SupplyComposition = { circulatingPct: number; remainingPct: number; 
 /** One on-chain pool row for the DEX Markets pool list. */
 /** Pool rows listed on the profile; the rest are summarised as "N more pools". */
 export const MAX_POOLS_LISTED = 30;
+/** Pairs listed in a DEX box's hover card. */
+export const MAX_PAIR_LINES = 8;
 /** One decentralised exchange (DEX) box: its pools' combined liquidity and 24h volume for this token, among the stored pools. */
-export type DexGroupRow = { id: string; label: string; logo: string | null; liquidity: string | null; volume24h: string | null; sharePct: number; pools: number };
+export type DexGroupRow = { id: string; label: string; logo: string | null; pairLines: PairLine[]; liquidity: string | null; volume24h: string | null; sharePct: number; pools: number };
 export type PoolRow = { id: string; dexLabel: string; pairAddress: string; liquidity: string | null; volume24h: string | null };
 /** One exchange row: its name, share of its group's listed volume and its 24h volume for this token. */
-export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number; logo: string | null };
+/** A trading pair shown on hover: its name and (when known) its 24h volume or liquidity. */
+export type PairLine = { pair: string; figure: string | null };
+export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number; logo: string | null; pairLines: PairLine[] };
 export type ExchangeGroup = { kind: "cex" | "dex"; title: string; total: string | null; rows: ExchangeRow[] };
 export type SectionId =
   | "overview" | "market" | "fundamentals" | "tokenomics" | "market-structure" | "dex-markets" | "exchanges" | "onchain-identity"
@@ -299,14 +303,16 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           liquidity: formatUsd(pool.liquidityUsd, true),
           volume24h: formatUsd(pool.volume24hUsd, true),
         }));
-      const byDex = new Map<string, { label: string; liquidity: number; volume: number; hasLiquidity: boolean; hasVolume: boolean; pools: number }>();
+      const byDex = new Map<string, { label: string; liquidity: number; volume: number; hasLiquidity: boolean; hasVolume: boolean; pools: number; pairLines: PairLine[] }>();
       for (const pool of ranked) {
         // Every pool known only by an address shares one "Unnamed DEX" box instead of one box each.
         const key = pool.dexId && !looksLikeAddress(pool.dexId) ? pool.dexId : "unnamed";
-        const entry = byDex.get(key) ?? { label: dexLabelFor(pool.dexId, pool.dexName), liquidity: 0, volume: 0, hasLiquidity: false, hasVolume: false, pools: 0 };
+        const entry = byDex.get(key) ?? { label: dexLabelFor(pool.dexId, pool.dexName), liquidity: 0, volume: 0, hasLiquidity: false, hasVolume: false, pools: 0, pairLines: [] };
         if (pool.liquidityUsd !== null) { entry.liquidity += pool.liquidityUsd; entry.hasLiquidity = true; }
         if (pool.volume24hUsd !== null) { entry.volume += pool.volume24hUsd; entry.hasVolume = true; }
         entry.pools += 1;
+        // Pools arrive most liquid first, so the first few are the DEX's largest pairs for this token.
+        if (entry.pairLines.length < MAX_PAIR_LINES) entry.pairLines.push({ pair: pool.quote ? `${token.symbol}/${pool.quote}` : token.symbol, figure: formatUsd(pool.liquidityUsd, true) ? `${formatUsd(pool.liquidityUsd, true)} liquidity` : null });
         byDex.set(key, entry);
       }
       const totalLiquidity = [...byDex.values()].reduce((sum, entry) => sum + entry.liquidity, 0);
@@ -319,6 +325,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           id: key,
           label: entry.label,
           logo: onchain.dexLogos?.[key] ?? null,
+          pairLines: entry.pairLines,
           liquidity: entry.hasLiquidity ? formatUsd(entry.liquidity, true) : null,
           volume24h: entry.hasVolume ? formatUsd(entry.volume, true) : null,
           sharePct: totalLiquidity > 0 ? (entry.liquidity / totalLiquidity) * 100 : 0,
@@ -362,6 +369,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           volume24h: formatUsd(item.volumeUsd, true) ?? "—",
           sharePct: total > 0 ? (item.volumeUsd / total) * 100 : 0,
           logo: item.logo ?? null,
+          pairLines: (item.pairList ?? []).map((entry) => ({ pair: entry.pair, figure: formatUsd(entry.volumeUsd, true) })),
         })),
       }];
     })

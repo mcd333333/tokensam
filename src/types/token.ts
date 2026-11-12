@@ -117,6 +117,8 @@ export type OnchainPool = {
   dexId: string | null;
   /** DexPaprika's readable DEX name, when it supplies one. */
   dexName?: string | null;
+  /** The pool's other token (symbol or shortened address). */
+  quote?: string | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
   priceUsd: number | null;
@@ -197,5 +199,5 @@ export type LiveTokenProfileData = {
   /** On-chain DEX pools and network identity; null when no exact-address mapping exists. */
   onchainMarkets: OnchainMarketsData | null;
   /** Latest daily exchange 24h volume snapshot (CoinGecko tickers, centralised and decentralised); null/absent when not yet collected. */
-  exchangeVolumes?: { fetchedAt: string; exchanges: { id: string; name: string; kind: "cex" | "dex"; volumeUsd: number; pairs: number; logo?: string | null }[] } | null;
+  exchangeVolumes?: { fetchedAt: string; exchanges: { id: string; name: string; kind: "cex" | "dex"; volumeUsd: number; pairs: number; logo?: string | null; pairList?: { pair: string; volumeUsd: number }[] }[] } | null;
 };
