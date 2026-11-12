@@ -15,7 +15,7 @@ function positiveInteger(value: string | null | undefined): number | null {
 }
 
 /**
- * DexPaprika collection (the only on-chain DEX data provider; it replaced DexPaprika and GeckoTerminal). The
+ * DexPaprika collection (the only on-chain DEX data provider; it replaced DEX Screener and GeckoTerminal). The
  * Cloudflare Worker calls this on every 5-minute tick; each call refreshes the stalest of the ~95 mapped tokens
  * (token stats older than 90 minutes, pool lists older than 6 hours), paced 2.5 s apart, under a monthly request cap,
  * so an idle tick does nothing. DEXPAPRIKA_API_KEY (optional) raises the limits and
