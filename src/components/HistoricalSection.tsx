@@ -19,6 +19,20 @@ const AXIS = { fill: "#7d776c", fontSize: 11 };
 const UP_COLOR = DIRECTION_UP_COLOR;
 const DOWN_COLOR = DIRECTION_DOWN_COLOR;
 
+/** SVG filter that blurs the line's own colours and lays the line over the blur, so green stretches glow green and red stretches red. */
+function GlowFilter({ id }: { id: string }) {
+  return (
+    <filter id={id} x="-5%" y="-30%" width="110%" height="160%" colorInterpolationFilters="sRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="2.6" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  );
+}
+
 function utcLabel(time: number, withTime = true) {
   return new Date(time).toLocaleString("en-GB", withTime
     ? { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" }
@@ -55,6 +69,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
   const change = hasTrend ? formatChange(coverageChangePct(points)) : null;
   const { label, color } = SERIES[metric];
   const gradientId = useId().replace(/:/g, "");
+  const glowId = `${gradientId}glow`;
   const stops = directionStops(chartPoints);
   // Falls back to the series colour when there is no direction to show (fewer than two distinct times).
   const stroke = stops.length > 0 ? `url(#${gradientId})` : color;
@@ -76,6 +91,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
                 <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
                   {stops.map((stop, index) => <stop key={index} offset={stop.offset} stopColor={stop.color} />)}
                 </linearGradient>
+                <GlowFilter id={glowId} />
               </defs>
               <CartesianGrid stroke="rgba(236, 230, 218, 0.06)" vertical={false} />
               <XAxis
@@ -88,7 +104,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
               <YAxis tickFormatter={(value: number) => formatUsd(value, true) ?? ""} tick={AXIS} axisLine={false} tickLine={false} width={62} domain={["auto", "auto"]} />
               <Tooltip content={<ChartTooltip seriesLabel={label} />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
               <Line
-                type="linear" dataKey="valueUsd" name={label} stroke={stroke} strokeWidth={1.75}
+                type="linear" dataKey="valueUsd" name={label} stroke={stroke} strokeWidth={1.75} style={stops.length > 0 ? { filter: `url(#${glowId})` } : undefined}
                 dot={points.length <= MAX_POINTS_WITH_DOTS && stops.length > 0
                   ? (props: { cx?: number; cy?: number; index?: number }) => {
                     const index = props.index ?? 0;
@@ -157,6 +173,12 @@ function RiskProfileCard({ data, period }: { data: TokenHistoricalData; period: 
   for (const point of volatility) rows.get(Date.parse(point.timestamp))!.volatility = point.valueUsd;
   for (const point of drawdown) rows.get(Date.parse(point.timestamp))!.drawdown = point.valueUsd;
   const chartRows = [...rows.values()];
+  const baseId = useId().replace(/:/g, "");
+  const glowId = `${baseId}glow`;
+  const seriesStops = {
+    volatility: directionStops(volatility.map((point) => ({ time: Date.parse(point.timestamp), valueUsd: point.valueUsd }))),
+    drawdown: directionStops(drawdown.map((point) => ({ time: Date.parse(point.timestamp), valueUsd: point.valueUsd }))),
+  };
   const latestVolatility = volatility.at(-1)?.valueUsd;
   const latestDrawdown = drawdown.at(-1)?.valueUsd;
   const hasTrend = hourly.length >= 2;
@@ -167,14 +189,22 @@ function RiskProfileCard({ data, period }: { data: TokenHistoricalData; period: 
       <header className="chart-head">
         <span className="chart-title" title={`${RISK.summary} ${RISK.help}`}>Risk profile</span>
         <div className="chart-summary">
-          {latestVolatility !== undefined ? <span className="risk-key"><i style={{ background: RISK.volatility.color }} aria-hidden="true" />{RISK.volatility.label} <strong>{pct(latestVolatility)}</strong></span> : null}
-          {latestDrawdown !== undefined ? <span className="risk-key"><i style={{ background: RISK.drawdown.color }} aria-hidden="true" />{RISK.drawdown.label} <strong>{pct(latestDrawdown)}</strong></span> : null}
+          {latestVolatility !== undefined ? <span className="risk-key"><i className="risk-solid" aria-hidden="true" />{RISK.volatility.label} <strong>{pct(latestVolatility)}</strong></span> : null}
+          {latestDrawdown !== undefined ? <span className="risk-key"><i className="risk-dashed" aria-hidden="true" />{RISK.drawdown.label} <strong>{pct(latestDrawdown)}</strong></span> : null}
         </div>
       </header>
       {hasTrend ? (
         <div className="chart-plot" role="img" aria-label={`Volatility and drawdown in percent: ${hourly.length} hourly price samples within the ${period} window`}>
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartRows} margin={{ top: 10, right: 6, bottom: 0, left: 0 }}>
+              <defs>
+                {(["volatility", "drawdown"] as const).map((key) => (
+                  <linearGradient key={key} id={`${baseId}${key}`} x1="0" y1="0" x2="1" y2="0">
+                    {seriesStops[key].map((stop, index) => <stop key={index} offset={stop.offset} stopColor={stop.color} />)}
+                  </linearGradient>
+                ))}
+                <GlowFilter id={glowId} />
+              </defs>
               <CartesianGrid stroke="rgba(236, 230, 218, 0.06)" vertical={false} />
               <XAxis
                 dataKey="time" type="number" scale="time" domain={["dataMin", "dataMax"]}
@@ -186,7 +216,10 @@ function RiskProfileCard({ data, period }: { data: TokenHistoricalData; period: 
               <Tooltip content={<RiskTooltip />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
               {(["volatility", "drawdown"] as const).map((key) => (
                 <Line
-                  key={key} type="linear" dataKey={key} name={RISK[key].label} stroke={RISK[key].color} strokeWidth={1.75} connectNulls
+                  key={key} type="linear" dataKey={key} name={RISK[key].label}
+                  stroke={seriesStops[key].length > 0 ? `url(#${baseId}${key})` : RISK[key].color} strokeWidth={1.75} connectNulls
+                  strokeDasharray={key === "drawdown" ? "5 3" : undefined}
+                  style={seriesStops[key].length > 0 ? { filter: `url(#${glowId})` } : undefined}
                   dot={chartRows.length <= MAX_POINTS_WITH_DOTS ? { r: 2, fill: RISK[key].color, strokeWidth: 0 } : false}
                   activeDot={{ r: 3.5, fill: RISK[key].color, stroke: "#0b0b0c", strokeWidth: 1.5 }}
                   isAnimationActive={false}

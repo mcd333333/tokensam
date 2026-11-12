@@ -435,6 +435,8 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .chart-summary small { color: var(--subtle); font-size: 12px; font-weight: 400; }
 .risk-key { display: inline-flex; align-items: baseline; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 500; }
 .risk-key i { width: 8px; height: 2px; flex: 0 0 8px; align-self: center; border-radius: 1px; }
+.risk-key i.risk-solid { width: 14px; flex-basis: 14px; background: var(--muted); }
+.risk-key i.risk-dashed { width: 14px; flex-basis: 14px; height: 0; border-top: 2px dashed var(--muted); border-radius: 0; background: none; }
 .risk-key strong { font-size: 15px; }
 .chart-plot { width: 100%; height: 210px; min-width: 0; }
 .chart-wide .chart-plot { height: 270px; }

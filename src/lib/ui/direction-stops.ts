@@ -1,5 +1,5 @@
-export const DIRECTION_UP_COLOR = "#8bc9ac";
-export const DIRECTION_DOWN_COLOR = "#e2766d";
+export const DIRECTION_UP_COLOR = "#00e05a";
+export const DIRECTION_DOWN_COLOR = "#ff1f3d";
 const UP_COLOR = DIRECTION_UP_COLOR;
 const DOWN_COLOR = DIRECTION_DOWN_COLOR;
 
