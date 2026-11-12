@@ -304,6 +304,18 @@ function isSuccessfulResponse(result: RouteResult): boolean {
 }
 
 /**
+ * True when the refresh route ran to completion, including a run it recorded as `failed` (HTTP 500 with a
+ * `runId`, e.g. every due provider timed out): the lock was released and the database is not under load from
+ * it. A network error, a 504 from a killed invocation, or the route's catch-all 500 (no `runId`) still counts
+ * as unfinished. The follow-on routes (DEX pools, exchange volumes) are gated on this rather than on 2xx, so a
+ * slow third-party API cannot starve them.
+ */
+function refreshFinished(result: RouteResult): boolean {
+  if (isSuccessfulResponse(result)) return true;
+  return !result.error && result.status === 500 && /"runId"\s*:\s*\d+/.test(result.body);
+}
+
+/**
  * Runs on every 5-minute Cron Trigger tick (see wrangler.toml).
  *
  * - /api/cron/refresh: each provider's own REFRESH_POLICY interval (CoinGecko/DEX Screener
@@ -355,7 +367,7 @@ async function run(env: Env): Promise<RouteResult[]> {
   // list turns over about every 30 minutes and an idle tick is a no-op. This replaced the GeckoTerminal
   // slices, which GeckoTerminal answered with HTTP 429 on ~85% of requests from Cloudflare's addresses.
   let dexPoolsResult: RouteResult | null = null;
-  if (isSuccessfulResponse(refreshResult)) {
+  if (refreshFinished(refreshResult)) {
     dexPoolsResult = await callRoute(env.REFRESH_URL, "/api/cron/dex-pools?slice=8", env.CRON_SECRET);
     if (dexPoolsResult.error) console.error(`refresh-scheduler: /api/cron/dex-pools request failed: ${dexPoolsResult.error}`);
     else console.log(`refresh-scheduler: /api/cron/dex-pools -> ${dexPoolsResult.status} ${dexPoolsResult.body.slice(0, 300)}`);
@@ -371,7 +383,7 @@ async function run(env: Env): Promise<RouteResult[]> {
   // first, up to 8 per tick, ~2 s pacing inside the route), so after the first ticks of a day this
   // is a cheap no-op. A hard monthly call cap lives in the route; see /api/cron/exchanges.
   let exchangesResult: RouteResult | null = null;
-  if (isSuccessfulResponse(refreshResult)) {
+  if (refreshFinished(refreshResult)) {
     exchangesResult = await callRoute(env.REFRESH_URL, "/api/cron/exchanges?slice=8", env.CRON_SECRET);
     if (exchangesResult.error) console.error(`refresh-scheduler: /api/cron/exchanges request failed: ${exchangesResult.error}`);
     else console.log(`refresh-scheduler: /api/cron/exchanges -> ${exchangesResult.status} ${exchangesResult.body.slice(0, 300)}`);
