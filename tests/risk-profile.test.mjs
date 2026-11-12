@@ -136,14 +136,20 @@ test("11. Price and Volume · 24h charts are unchanged; Market cap is no longer 
   assert.match(chart, /metric === "riskProfile"\n\s+\? <RiskProfileCard/);
 });
 
-test("12. line charts colour rises green and falls red with hard stops along the time axis", async () => {
-  const { directionStops, DIRECTION_UP_COLOR, DIRECTION_DOWN_COLOR } = await import("../src/lib/ui/direction-stops.ts");
-  const stops = directionStops([{ time: 0, valueUsd: 1 }, { time: 10, valueUsd: 2 }, { time: 20, valueUsd: 3 }, { time: 30, valueUsd: 1 }, { time: 40, valueUsd: 1 }, { time: 60, valueUsd: 2 }]);
-  assert.deepEqual(stops, [
-    { offset: 0, color: DIRECTION_UP_COLOR }, { offset: 20 / 60, color: DIRECTION_UP_COLOR },
-    { offset: 20 / 60, color: DIRECTION_DOWN_COLOR }, { offset: 40 / 60, color: DIRECTION_DOWN_COLOR },
-    { offset: 40 / 60, color: DIRECTION_UP_COLOR }, { offset: 1, color: DIRECTION_UP_COLOR },
-  ].map((stop, index) => index === 3 ? { ...stop } : stop).slice(0, 6).map((stop) => stop), "flat step keeps the previous (red) colour until the next rise");
+test("12. line charts colour by trend over a window, not tick by tick", async () => {
+  const { directionStops, trendColors, DIRECTION_UP_COLOR, DIRECTION_DOWN_COLOR } = await import("../src/lib/ui/direction-stops.ts");
+  // A rally with one-tick dips: each dip stays green because it is still above the value a window earlier.
+  const rally = Array.from({ length: 61 }, (_, i) => ({ time: i * 10, valueUsd: 100 + i * 2 - (i % 4 === 3 ? 1 : 0) }));
+  const colors = trendColors(rally);
+  assert.ok(colors.every((color) => color === DIRECTION_UP_COLOR), "dips inside a rally do not flip the colour");
+  const fall = rally.map((point) => ({ ...point, valueUsd: 300 - point.valueUsd }));
+  assert.ok(trendColors(fall).slice(5).every((color) => color === DIRECTION_DOWN_COLOR));
+  // Up then down: the stops switch once, near the turn, and stay on the time axis.
+  const peak = Array.from({ length: 61 }, (_, i) => ({ time: i * 10, valueUsd: i <= 30 ? 100 + i : 130 - (i - 30) }));
+  const stops = directionStops(peak);
+  assert.equal(stops[0].color, DIRECTION_UP_COLOR);
+  assert.equal(stops.at(-1).color, DIRECTION_DOWN_COLOR);
+  assert.ok(stops.every((stop, index) => index === 0 || stop.offset >= stops[index - 1].offset), "offsets never go backwards");
   assert.deepEqual(directionStops([{ time: 0, valueUsd: 5 }, { time: 10, valueUsd: 5 }]), [], "a flat line has no direction to colour");
   assert.deepEqual(directionStops([{ time: 0, valueUsd: 5 }]), []);
 });

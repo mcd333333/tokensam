@@ -1,31 +1,55 @@
-export const DIRECTION_UP_COLOR = "#00e05a";
-export const DIRECTION_DOWN_COLOR = "#ff1f3d";
-const UP_COLOR = DIRECTION_UP_COLOR;
-const DOWN_COLOR = DIRECTION_DOWN_COLOR;
+export const DIRECTION_UP_COLOR = "#8bc9ac";
+export const DIRECTION_DOWN_COLOR = "#e2766d";
+
+type TimedPoint = { time: number; valueUsd: number };
+
+/** The trend window is this fraction of the series' time span, so a chart shows about 30 colour runs however many points it has. */
+export const TREND_WINDOW_FRACTION = 1 / 30;
 
 /**
- * Hard-stop gradient stops that colour each stretch of the line by its direction: green where the value rose from the
- * previous point, red where it fell (a flat step keeps the previous colour). Stops sit at each point's share of the
- * time axis, which is how the line itself is laid out, and consecutive same-direction steps are merged.
+ * Trend colour of each point: green when its value is at or above the value one trend window earlier, red when below.
+ * Comparing against a window earlier, not the previous point, keeps choppy stretches from flipping colour on every tick.
+ * Points in the first window compare with the first point. A flat step keeps the previous colour.
  */
-export function directionStops(points: { time: number; valueUsd: number }[]): { offset: number; color: string }[] {
+export function trendColors(points: TimedPoint[], windowFraction = TREND_WINDOW_FRACTION): string[] {
+  if (points.length < 2) return points.map(() => DIRECTION_UP_COLOR);
+  const start = points[0].time;
+  const span = points[points.length - 1].time - start;
+  const windowMs = span * windowFraction;
+  const colors: string[] = [];
+  let previous = DIRECTION_UP_COLOR;
+  let base = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    while (base + 1 < index && points[base + 1].time <= points[index].time - windowMs) base += 1;
+    const reference = index === 0 ? points[1] : points[base];
+    const delta = index === 0 ? reference.valueUsd - points[0].valueUsd : points[index].valueUsd - reference.valueUsd;
+    if (delta > 0) previous = DIRECTION_UP_COLOR;
+    else if (delta < 0) previous = DIRECTION_DOWN_COLOR;
+    colors.push(previous);
+  }
+  return colors;
+}
+
+/**
+ * Hard-stop gradient stops that colour the line by trend (see trendColors): the stretch ending at each point takes that
+ * point's colour. Stops sit at each point's share of the time axis, which is how the line is laid out, and consecutive
+ * same-colour stretches are merged. A perfectly flat line has no direction (and a zero-height bounding box, where an
+ * objectBoundingBox gradient paints nothing), so it gets no stops.
+ */
+export function directionStops(points: TimedPoint[], windowFraction = TREND_WINDOW_FRACTION): { offset: number; color: string }[] {
   if (points.length < 2) return [];
   const start = points[0].time;
   const span = points[points.length - 1].time - start;
   if (span <= 0) return [];
-  // A perfectly flat line has a zero-height bounding box, where an objectBoundingBox gradient paints nothing.
   if (points.every((point) => point.valueUsd === points[0].valueUsd)) return [];
+  const colors = trendColors(points, windowFraction);
   const steps: { from: number; to: number; color: string }[] = [];
-  let color = points[1].valueUsd >= points[0].valueUsd ? UP_COLOR : DOWN_COLOR;
   for (let index = 1; index < points.length; index += 1) {
-    const delta = points[index].valueUsd - points[index - 1].valueUsd;
-    if (delta > 0) color = UP_COLOR;
-    else if (delta < 0) color = DOWN_COLOR;
     const from = (points[index - 1].time - start) / span;
     const to = (points[index].time - start) / span;
     const last = steps.at(-1);
-    if (last && last.color === color) last.to = to;
-    else steps.push({ from, to, color });
+    if (last && last.color === colors[index]) last.to = to;
+    else steps.push({ from, to, color: colors[index] });
   }
   return steps.flatMap((step) => [{ offset: step.from, color: step.color }, { offset: step.to, color: step.color }]);
 }
