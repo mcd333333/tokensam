@@ -20,6 +20,8 @@ export type SectionNote = { title: string; reason: string };
 /** Circulating vs maximum supply. `barPct` is clamped to 0–100 for drawing; `circulatingPct` is the actual ratio. */
 export type SupplyComposition = { circulatingPct: number; remainingPct: number; barPct: number; circulating: string; maximum: string; symbol: string };
 /** One on-chain pool row for the DEX Markets pool list. */
+/** Pool rows listed on the profile; the rest are summarised as "N more pools". */
+export const MAX_POOLS_LISTED = 30;
 export type PoolRow = { id: string; dexLabel: string; pairAddress: string; liquidity: string | null; volume24h: string | null };
 /** One exchange row: its name, share of its group's listed volume and its 24h volume for this token. */
 export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number };
@@ -36,8 +38,8 @@ export type ProfileModel = {
     | { available: true; protocolName: string; scopeLine: string; primary: Card[]; valuation: Card[]; changes: Card[] }
     | { available: false; note: SectionNote };
   marketStructure: { available: true; scopeLine: string; cards: Card[] } | { available: false; note: SectionNote };
-  /** On-chain DEX pools (DEX Screener, up to 30 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
-  dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; pools: PoolRow[] } | { available: false; note: SectionNote };
+  /** On-chain DEX pools (DexPaprika, up to 30 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
+  dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; pools: PoolRow[]; /** pools stored beyond the rows listed */ morePools: number } | { available: false; note: SectionNote };
   /** Exchange listings (centralised and decentralised) with each exchange's own 24h volume (daily snapshot); omitted when none is stored. */
   exchanges: { available: true; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
   /** Network + exact contract address for this token's on-chain identity. */
@@ -230,7 +232,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
       : { available: false, note: { title: "DEX markets", reason: "No exact-address DEX market data is currently stored for this token." } };
   }
 
-  // D2. DEX Markets (DEX Screener pool snapshot): market scope, exact-address identity only. This is separate,
+  // D2. DEX Markets (DexPaprika pool snapshot): market scope, exact-address identity only. This is separate,
   // pool-level data (individual pools/DEXes) rather than a second copy of the Trading & Liquidity
   // aggregate above; both are shown, clearly separate, rather than merging or picking a "winning" provider.
   let dexMarkets: ProfileModel["dexMarkets"];
@@ -255,8 +257,10 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
         card("gt_fdv", "Fully diluted valuation", formatUsd(onchain.fdvUsd, true)),
         card("gt_market_cap", "Market cap", formatUsd(onchain.marketCapUsd, true)),
       ]);
-      const pools: PoolRow[] = [...onchain.pools]
-        .sort((a, b) => (b.liquidityUsd ?? -1) - (a.liquidityUsd ?? -1))
+      const ranked = [...onchain.pools].sort((a, b) => (b.liquidityUsd ?? -1) - (a.liquidityUsd ?? -1));
+      // Totals, the DEX list and the concentration indicators use every stored pool; the list shows the most liquid ones.
+      const pools: PoolRow[] = ranked
+        .slice(0, MAX_POOLS_LISTED)
         .map((pool) => ({
           id: pool.pairAddress,
           dexLabel: pool.dexId ? humanizeDexId(pool.dexId) : "Unknown DEX",
@@ -271,6 +275,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           cards,
           dexes: onchain.dexes.map(humanizeDexId),
           pools,
+          morePools: Math.max(0, ranked.length - pools.length),
         }
         : { available: false, note: { title: "DEX markets", reason: "No on-chain DEX market data is currently stored for this token." } };
     }

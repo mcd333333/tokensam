@@ -735,7 +735,7 @@ type GeckoTerminalRawPool = {
  * Optional: a failed read leaves pools empty rather than failing the profile.
  */
 /**
- * Latest on-chain DEX pool snapshot for a token (DEX Screener, refreshed every ~30 minutes by
+ * Latest on-chain DEX pool snapshot for a token (DexPaprika, refreshed about hourly by
  * /api/cron/dex-pools), most liquid pool first. Optional: a failed read or a token with no snapshot yet leaves
  * the pool list empty rather than failing the profile. `primary` is the most liquid pool, which supplies the
  * price change, FDV and market cap shown with the pools.
@@ -1006,7 +1006,7 @@ async function getLiveTokenProfileUncached(
       .catch((error) => { console.error(`Indicator supply history read failed for ${tokenId}:`, error); return [] as DbObservation[]; }),
     // Token-level FDV from the stored market-data record (Tokenomics); failures leave it unavailable.
     readReportedFdv(client, [tokenId]),
-    // On-chain DEX pools (DEX Screener snapshot); optional, so a failed read leaves it empty.
+    // On-chain DEX pools (DexPaprika snapshot); optional, so a failed read leaves it empty.
     readDexPools(client, tokenId),
     readExchangeVolumes(client, tokenId),
   ]);
@@ -1050,7 +1050,7 @@ async function getLiveTokenProfileUncached(
   // Market-scope counts only for a curated exact-address mapping; never from a wrapped proxy.
   const dexCount = (metricId: string) => dexMapped ? observationValue(observationFor(observations, tokenId, "dexscreener", metricId)) : null;
   const protocolMapped = coverage.some((item) => item.provider === "defillama" && item.status === "mapped");
-  // On-chain identity: network + exact contract address, from the curated DEX Screener mapping (never a
+  // On-chain identity: network + exact contract address, from the curated on-chain address mapping (never a
   // wrapped or ticker-matched substitute). The chain name reuses this token's own chain lookup, since the
   // canonical chain the mapping is keyed to is always this token's own chain in the current mapping data.
   // Liquidity is the most liquid pool's, volume is summed across the stored pools, and the price change, FDV
@@ -1078,7 +1078,7 @@ async function getLiveTokenProfileUncached(
     // Indicators are optional context: a calculation failure hides the section, never the profile.
     console.error(`Technical indicator calculation failed for ${tokenId}:`, error);
   }
-  // On-chain concentration (Pool/DEX HHI): cross-sectional, from the latest DEX Screener pool
+  // On-chain concentration (Pool/DEX HHI): cross-sectional, from the latest DexPaprika pool
   // snapshot only. Merged in even if the daily-series indicators above found nothing.
   const concentrationIndicators = onchainMarkets
     ? buildConcentrationIndicators(onchainMarkets.pools, { collectedAt: dexPools.collectedAt, calculatedAt: nowIso })

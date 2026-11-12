@@ -292,6 +292,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
             <p className="scope-line">DEXs: {dexMarkets.dexes.map((dex) => <span key={dex} className="chip chip-quiet">{dex}</span>)}</p>
           ) : null}
           <PoolList pools={dexMarkets.pools} />
+          {dexMarkets.morePools > 0 ? <p className="scope-line">+ {dexMarkets.morePools} more pools with smaller liquidity, included in the totals above.</p> : null}
         </section>
       ) : null}
 

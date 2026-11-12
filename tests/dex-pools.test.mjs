@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { MAX_POOLS_PER_TOKEN, fetchDexPools, normalizeDexPools } from "../src/lib/providers/dexscreener-pools.ts";
+import { MAX_POOLS_PER_TOKEN, dexPaprikaNetwork, fetchDexPools, normalizeDexPools, DexPoolApiError } from "../src/lib/providers/dexpaprika-pools.ts";
 import { DEX_POOL_REFRESH_AFTER_MS, dexPoolAssets, runDexPoolCollection } from "../src/lib/providers/run-dex-pool-collection.ts";
 import { getLiveTokenProfile } from "../src/lib/data/live-data.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
@@ -11,58 +11,70 @@ const cases = [];
 function test(name, run) { cases.push({ name, run }); }
 
 const UNI = "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984";
-const pair = (address, overrides = {}) => ({
-  chainId: "ethereum", dexId: "uniswap", labels: ["v3"], pairAddress: address,
-  baseToken: { address: UNI }, quoteToken: { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2" },
-  priceUsd: "6.2", liquidity: { usd: 1000 }, volume: { h24: 500 }, priceChange: { h24: -2.5 },
-  fdv: 6_200_000_000, marketCap: 3_700_000_000, pairCreatedAt: 1_600_000_000_000, ...overrides,
+const raw = (id, overrides = {}) => ({
+  id, dex_id: "uniswap_v3", dex_name: "Uniswap V3", chain: "ethereum", created_at: "2021-05-04T19:52:36Z",
+  liquidity_usd: 1000, volume_usd_24h: 500, price_usd: 6.2, price_change_percentage_24h: -2.5, ...overrides,
 });
 
-test("keeps exact-address pools on the requested chain, most liquid first, with version-qualified DEX ids", () => {
-  const pools = normalizeDexPools("ethereum", UNI.toLowerCase(), [
-    pair("0xaaa", { liquidity: { usd: 10 } }),
-    pair("0xbbb", { liquidity: { usd: 9_000 }, dexId: "sushiswap", labels: null }),
-    pair("0xccc", { baseToken: { address: "0xdead" }, quoteToken: { address: UNI } }), // token as the quote side still matches
-    pair("0xddd", { baseToken: { address: "0xdead" }, quoteToken: { address: "0xbeef" } }), // a different token: dropped
-    pair("0xeee", { chainId: "base" }), // another chain: dropped
-    pair("0xaaa"), // duplicate pair address: dropped
-  ]);
-  assert.deepEqual(pools.map((pool) => pool.pairAddress), ["0xbbb", "0xccc", "0xaaa"]);
+test("reads DexPaprika pool search results: most liquid first, deduplicated, with null for missing numbers", () => {
+  const pools = normalizeDexPools({ results: [
+    raw("0xaaa", { liquidity_usd: 10 }),
+    raw("0xbbb", { liquidity_usd: 9_000, dex_id: "sushiswap" }),
+    raw("0xaaa"), // duplicate pool address: dropped
+    raw("0xccc", { liquidity_usd: null, volume_usd_24h: "n/a", price_usd: undefined, created_at: "garbage" }),
+  ], has_next_page: true });
+  assert.deepEqual(pools.map((pool) => pool.pairAddress), ["0xbbb", "0xaaa", "0xccc"]);
   assert.equal(pools[0].dexId, "sushiswap");
-  assert.equal(pools[1].dexId, "uniswap_v3");
-  assert.equal(pools[1].liquidityUsd, 1000);
   assert.equal(pools[1].priceChange24hPct, -2.5);
-  assert.equal(pools[1].createdAt, new Date(1_600_000_000_000).toISOString());
+  assert.equal(pools[1].createdAt, "2021-05-04T19:52:36.000Z");
+  assert.equal(pools[2].liquidityUsd, null);
+  assert.equal(pools[2].volume24hUsd, null);
+  assert.equal(pools[2].createdAt, null);
+  assert.equal(pools[0].fdvUsd, null, "the search carries no FDV");
+  assert.equal(pools[0].marketCapUsd, null, "nor a market cap");
+  assert.deepEqual(normalizeDexPools(null), []);
+  const many = Array.from({ length: 130 }, (_, index) => raw(`0x${index}`, { liquidity_usd: index }));
+  assert.equal(MAX_POOLS_PER_TOKEN, 100);
+  assert.equal(normalizeDexPools({ results: many }).length, MAX_POOLS_PER_TOKEN);
 });
 
-test("non-numeric fields become null, never zero, and the list is capped", () => {
-  const [pool] = normalizeDexPools("ethereum", UNI, [pair("0x1", { liquidity: null, volume: {}, priceUsd: "n/a", fdv: undefined, pairCreatedAt: 0 })]);
-  assert.equal(pool.liquidityUsd, null);
-  assert.equal(pool.volume24hUsd, null);
-  assert.equal(pool.priceUsd, null);
-  assert.equal(pool.fdvUsd, null);
-  assert.equal(pool.createdAt, null);
-  const many = Array.from({ length: 40 }, (_, index) => pair(`0x${index}`, { liquidity: { usd: index } }));
-  assert.equal(normalizeDexPools("ethereum", UNI, many).length, MAX_POOLS_PER_TOKEN);
-  assert.deepEqual(normalizeDexPools("ethereum", UNI, null), []);
+test("network names: Hyperliquid maps to hyperevm, ICP is unsupported, the rest keep their id", () => {
+  assert.equal(dexPaprikaNetwork("hyperliquid"), "hyperevm");
+  assert.equal(dexPaprikaNetwork("icp"), null);
+  assert.equal(dexPaprikaNetwork("ethereum"), "ethereum");
+  assert.ok(dexPoolAssets.every((asset) => asset.network !== "icp" && asset.network !== "hyperliquid"));
 });
 
-test("the request hits token-pairs/v1 with the same headers as the main collector, retries a 429 once, and does not surface bodies", async () => {
+test("the request is a token_address pool search; the key goes in Authorization only when set; a 429 is retried once", async () => {
   let calls = 0;
   const seen = [];
   const fetchImpl = async (url, init) => {
     calls += 1;
-    seen.push({ url: String(url), headers: init.headers });
-    return calls === 1 ? new Response("limited", { status: 429 }) : Response.json([pair("0x1")]);
+    seen.push({ url: new URL(String(url)), headers: init.headers });
+    return calls === 1 ? new Response("limited", { status: 429 }) : Response.json({ results: [raw("0x1")] });
   };
-  const pools = await fetchDexPools("ethereum", UNI, { fetchImpl, sleep: async () => {} });
-  assert.equal(pools.length, 1);
+  const withKey = await fetchDexPools("ethereum", UNI, { apiKey: "api_secret", fetchImpl, sleep: async () => {} });
+  assert.equal(withKey.length, 1);
   assert.equal(calls, 2);
-  assert.ok(seen.every((entry) => entry.url === `https://api.dexscreener.com/token-pairs/v1/ethereum/${UNI}` && JSON.stringify(entry.headers) === JSON.stringify({ accept: "application/json" })));
+  for (const { url, headers } of seen) {
+    assert.equal(url.origin + url.pathname, "https://api.dexpaprika.com/networks/ethereum/pools/search");
+    assert.equal(url.searchParams.get("token_address"), UNI);
+    assert.equal(url.searchParams.get("order_by"), "liquidity_usd");
+    assert.equal(url.searchParams.get("limit"), "100");
+    assert.equal(headers.authorization, "api_secret");
+  }
+  seen.length = 0;
+  await fetchDexPools("ethereum", UNI, { apiKey: null, fetchImpl: async (url, init) => { seen.push(init.headers); return Response.json({ results: [] }); }, sleep: async () => {} });
+  assert.equal(seen[0].authorization, undefined, "keyless requests send no Authorization header");
+});
+
+test("errors never surface response bodies, and 402 (credits exhausted) is not retried", async () => {
+  let calls = 0;
   await assert.rejects(
-    fetchDexPools("ethereum", UNI, { fetchImpl: async () => new Response("secret body", { status: 403 }), sleep: async () => {} }),
-    (error) => error.status === 403 && !/secret body/.test(error.message),
+    fetchDexPools("ethereum", UNI, { apiKey: "k", fetchImpl: async () => { calls += 1; return new Response("secret body", { status: 402 }); }, sleep: async () => {} }),
+    (error) => error.status === 402 && !/secret body/.test(error.message),
   );
+  assert.equal(calls, 1);
 });
 
 function fakeClient({ snapshots = [] } = {}) {
@@ -102,8 +114,7 @@ test("reports none_due when everything is fresh; a lone 429 is skipped after a c
   const idle = await runDexPoolCollection(fakeClient({ snapshots: all }).client, { ...baseOptions, now, maxTokens: 5 });
   assert.equal(idle.stoppedReason, "none_due");
 
-  const { DexPoolApiError } = await import("../src/lib/providers/dexscreener-pools.ts");
-  const sleeps = [];
+    const sleeps = [];
   let call = 0;
   const lone = await runDexPoolCollection(fakeClient().client, {
     ...baseOptions, now, maxTokens: 3, sleep: async (ms) => { sleeps.push(ms); },
@@ -112,7 +123,7 @@ test("reports none_due when everything is fresh; a lone 429 is skipped after a c
   assert.equal(lone.attempted, 3);
   assert.equal(lone.failed, 1);
   assert.equal(lone.succeeded, 2, "the slice carries on after one 429");
-  assert.ok(sleeps.includes(5_000), "with a cooldown after the 429");
+  assert.ok(sleeps.includes(8_000), "with a cooldown after the 429");
 
   const throttled = await runDexPoolCollection(fakeClient().client, {
     ...baseOptions, now, maxTokens: 5, fetchPools: async () => { throw new DexPoolApiError("limited", 429); },
@@ -120,6 +131,12 @@ test("reports none_due when everything is fresh; a lone 429 is skipped after a c
   assert.equal(throttled.attempted, 2);
   assert.equal(throttled.stoppedReason, "rate_limited");
   assert.match(throttled.firstError, /limited/);
+
+  const broke = await runDexPoolCollection(fakeClient().client, {
+    ...baseOptions, now, maxTokens: 5, fetchPools: async () => { throw new DexPoolApiError("no credits", 402); },
+  });
+  assert.equal(broke.attempted, 1);
+  assert.equal(broke.stoppedReason, "credits_exhausted");
 });
 
 test("only canonical-universe tokens are collected, so every row has a token to attach to", () => {
@@ -143,20 +160,32 @@ const profileFor = (tokenId, snapshot) => {
 test("a profile builds its DEX Markets and concentration from the stored DEX Screener pool snapshot", async () => {
   const [first] = dexPoolAssets;
   const data = await profileFor(first.tokenId, { fetched_at: "2026-11-12T11:55:00.000Z", pools: [
-    { pairAddress: "0xaaa", dexId: "uniswap_v3", liquidityUsd: 9_000_000, volume24hUsd: 4_000_000, priceUsd: 6.2, priceChange24hPct: -2.5, fdvUsd: 6.2e9, marketCapUsd: 3.7e9, createdAt: null },
+    { pairAddress: "0xaaa", dexId: "uniswap_v3", liquidityUsd: 9_000_000, volume24hUsd: 4_000_000, priceUsd: 6.2, priceChange24hPct: -2.5, fdvUsd: null, marketCapUsd: null, createdAt: null },
     { pairAddress: "0xbbb", dexId: "sushiswap", liquidityUsd: 1_000_000, volume24hUsd: 1_000_000, priceUsd: 6.2, priceChange24hPct: -2.4, fdvUsd: null, marketCapUsd: null, createdAt: "2021-05-01T00:00:00.000Z" },
   ] });
   assert.equal(data.onchainMarkets.liquidityUsd, 9_000_000, "most liquid pool");
   assert.equal(data.onchainMarkets.volume24hUsd, 5_000_000, "summed across pools");
   assert.equal(data.onchainMarkets.priceChange24hPct, -2.5, "from the most liquid pool");
-  assert.equal(data.onchainMarkets.fdvUsd, 6.2e9);
+  assert.equal(data.onchainMarkets.fdvUsd, null, "no FDV from the pool source, so that card is not shown");
   assert.deepEqual(data.onchainMarkets.dexes, ["uniswap_v3", "sushiswap"]);
   const model = buildProfileModel(data);
   assert.equal(model.dexMarkets.available, true);
   assert.deepEqual(model.dexMarkets.pools.map((pool) => pool.dexLabel), ["Uniswap V3", "Sushiswap"]);
   const hhi = data.technicalIndicators?.groups.flatMap((group) => group.indicators ?? []).find((item) => item.id === "pool_concentration_hhi");
   assert.ok(hhi, "the pool concentration indicator is built from the snapshot");
-  assert.deepEqual(hhi.provenance.providers, ["dexscreener"]);
+  assert.deepEqual(hhi.provenance.providers, ["dexpaprika"]);
+});
+
+test("a token with more than 30 stored pools lists the 30 most liquid and counts the rest, while totals use all of them", async () => {
+  const [, , third] = dexPoolAssets;
+  const pools = Array.from({ length: 45 }, (_, index) => ({
+    pairAddress: `0x${index}`, dexId: "uniswap_v3", liquidityUsd: 1_000_000 - index * 1_000, volume24hUsd: 100, priceUsd: 1, priceChange24hPct: 0, fdvUsd: null, marketCapUsd: null, createdAt: null,
+  }));
+  const data = await profileFor(third.tokenId, { fetched_at: "2026-11-12T11:55:00.000Z", pools });
+  const model = buildProfileModel(data);
+  assert.equal(model.dexMarkets.pools.length, 30);
+  assert.equal(model.dexMarkets.morePools, 15);
+  assert.equal(data.onchainMarkets.volume24hUsd, 4_500, "volume is summed over all 45 stored pools");
 });
 
 test("a mapped token with no snapshot yet shows no pools rather than failing", async () => {
