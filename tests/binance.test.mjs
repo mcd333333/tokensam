@@ -10,6 +10,7 @@ import {
 import { binanceSymbols, binanceUnmapped } from "../src/data/binance-token-mappings.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 import { tokenCoverage } from "../src/data/provider-coverage.ts";
+import { coinbaseProducts } from "../src/data/coinbase-token-mappings.ts";
 import { BINANCE_PREFERRED_MAX_AGE_MS, buildDashboardTokens } from "../src/lib/data/live-data.ts";
 import { PROVIDER_STEPS } from "../src/lib/refresh/config.ts";
 
@@ -193,21 +194,21 @@ test("curated symbols are unique per token and cover the universe minus explicit
   }
 });
 
-test("coverage reports Binance as live-price-only, and states why a gap exists", () => {
-  const mapped = canonicalTokens.find((token) => binanceSymbols[token.id]);
+test("coverage reports the live exchange price slot (now Coinbase) as live-price-only, and states why a gap exists", () => {
+  const mapped = canonicalTokens.find((token) => coinbaseProducts[token.id]);
   const entry = tokenCoverage(mapped).find((item) => item.provider === "binance");
   assert.equal(entry.status, "mapped");
-  assert.equal(entry.identifier, binanceSymbols[mapped.id]);
+  assert.equal(entry.label, "Coinbase");
+  assert.equal(entry.identifier, coinbaseProducts[mapped.id]);
   assert.match(entry.detail, /live price/i);
   // The coverage text must not promise metrics this provider never writes.
   assert.match(entry.detail, /Not market cap, supply, volume, or history/);
 
-  const gapId = Object.keys(binanceUnmapped)[0];
-  const gap = tokenCoverage(canonicalTokens.find((token) => token.id === gapId))
-    .find((item) => item.provider === "binance");
+  const gapToken = canonicalTokens.find((token) => !coinbaseProducts[token.id]);
+  const gap = tokenCoverage(gapToken).find((item) => item.provider === "binance");
   assert.equal(gap.status, "unavailable");
   assert.equal(gap.identifier, null);
-  assert.equal(gap.detail, binanceUnmapped[gapId].detail);
+  assert.match(gap.detail, /falls back to CoinGecko/);
 });
 
 test("binance is fetched live at render time, not as a refresh-pipeline step", () => {

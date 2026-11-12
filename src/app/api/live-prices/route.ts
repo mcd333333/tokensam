@@ -32,8 +32,14 @@ async function buildPayload(): Promise<Payload> {
   // Worker instance make one upstream call) and drops disabled, offline and non-finite products.
   const tickers = await fetchCoinbaseTickers(PRODUCT_IDS);
   const prices: Payload["prices"] = {};
-  for (const [productId, ticker] of tickers) prices[productId] = { p: ticker.price, c: ticker.changePct };
-  return { asOf: new Date().toISOString(), prices };
+  let oldest = Date.now();
+  for (const [productId, ticker] of tickers) {
+    prices[productId] = { p: ticker.price, c: ticker.changePct };
+    oldest = Math.min(oldest, ticker.at);
+  }
+  // asOf is the oldest ticker's fetch time, so prices served from a failed refresh age out on the
+  // client's own staleness guard instead of looking live.
+  return { asOf: new Date(oldest).toISOString(), prices };
 }
 
 export async function GET(): Promise<Response> {

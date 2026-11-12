@@ -297,6 +297,46 @@ test("a failing live fetch falls back to the stored CoinGecko price instead of f
   } finally { stub.restore(); }
 });
 
+test("a 429 is retried once, and the User-Agent identifies the app", async () => {
+  resetCoinbaseMemo();
+  let attempts = 0;
+  const seenAgents = [];
+  const realFetchLocal = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    seenAgents.push(init?.headers?.["user-agent"]);
+    attempts += 1;
+    return attempts === 1 ? new Response("slow down", { status: 429 }) : Response.json({ products: productsFor(new URL(String(url))) });
+  };
+  try {
+    const response = await getLivePrices();
+    assert.equal(response.status, 200);
+    assert.ok(attempts >= 3, "the first batch was retried, and the second batch ran");
+    assert.ok(seenAgents.every((agent) => /^tokensam\//.test(agent)));
+  } finally { globalThis.fetch = realFetchLocal; }
+});
+
+test("when a refresh fails, recent prices are still served with their original asOf, and not after two minutes", async () => {
+  resetCoinbaseMemo();
+  const realNow = Date.now;
+  const t0 = realNow.call(Date);
+  const stub = coinbaseStub(async (url) => Response.json({ products: productsFor(url) }));
+  try {
+    Date.now = () => t0;
+    const first = await (await getLivePrices()).json();
+    stub.restore();
+
+    const failing = coinbaseStub(async () => new Response("down", { status: 500 }));
+    Date.now = () => t0 + 30_000;
+    const stale = await getLivePrices();
+    assert.equal(stale.status, 200, "30 s old prices still served after a failed refresh");
+    assert.equal((await stale.json()).asOf, first.asOf, "asOf stays the original fetch time, so the client ages it out honestly");
+
+    Date.now = () => t0 + 130_000;
+    assert.equal((await getLivePrices()).status, 502, "past two minutes nothing usable remains");
+    failing.restore();
+  } finally { Date.now = realNow; globalThis.fetch = realFetch; }
+});
+
 let failures = 0;
 for (const { name, run } of cases) {
   try { await run(); console.log(`PASS ${name}`); }

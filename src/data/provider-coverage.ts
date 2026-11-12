@@ -1,5 +1,5 @@
 import { canonicalTokens, type CanonicalTokenDefinition } from "./canonical-tokens.ts";
-import { binanceSymbols, binanceUnmapped } from "./binance-token-mappings.ts";
+import { coinbaseProducts } from "./coinbase-token-mappings.ts";
 import { coingeckoTokenIds } from "./coingecko-token-mappings.ts";
 import { defillamaProtocolMappings } from "./defillama-protocol-mappings.ts";
 import { dexScreenerTokenMappings } from "./dexscreener-token-mappings.ts";
@@ -45,7 +45,8 @@ export type ProviderCoverage = {
 
 export const PROVIDER_LABELS: Record<CoverageProvider, string> = {
   coingecko: "CoinGecko",
-  binance: "Binance",
+  // The id is the live-exchange-price slot, kept from when Binance filled it; Coinbase fills it now.
+  binance: "Coinbase",
   defillama_coins: "DeFiLlama (token prices)",
   defillama: "DeFiLlama (protocol)",
   dexscreener: "DEX Screener",
@@ -106,22 +107,20 @@ export function tokenCoverage(token: CanonicalTokenDefinition): ProviderCoverage
       mappingClass: "D_not_supported", verification: null, reason: "provider_does_not_support_token", detail: "No CoinGecko ID is mapped.",
     };
 
-  const binanceSymbol = binanceSymbols[token.id] ?? null;
-  const binanceGap = binanceUnmapped[token.id];
-  const binance: ProviderCoverage = binanceSymbol
+  const coinbaseProduct = coinbaseProducts[token.id] ?? null;
+  const binance: ProviderCoverage = coinbaseProduct
     ? {
-      provider: "binance", label: PROVIDER_LABELS.binance, scope: "market", status: "mapped", identifier: binanceSymbol,
+      provider: "binance", label: PROVIDER_LABELS.binance, scope: "market", status: "mapped", identifier: coinbaseProduct,
       mappingClass: "C_manual_curation",
-      verification: "Curated Binance spot symbol, confirmed TRADING and spot-enabled in GET /api/v3/exchangeInfo (2026-10-06); never derived from the ticker at runtime.",
+      verification: "Curated Coinbase spot product, confirmed online and USD-quoted in GET /api/v3/brokerage/market/products (2026-11-12); never derived from the ticker at runtime.",
       reason: null,
-      detail: "Preferred live price and 24-hour price change (Binance spot last trade, USDT-quoted). Not market cap, supply, volume, or history -- those stay CoinGecko's.",
+      detail: "Preferred live price and 24-hour price change (Coinbase spot last trade, USD-quoted). Not market cap, supply, volume, or history -- those stay CoinGecko's.",
     }
     : {
       provider: "binance", label: PROVIDER_LABELS.binance, scope: "market", status: "unavailable", identifier: null,
       mappingClass: "D_not_supported", verification: null,
-      reason: binanceGap?.reason ?? "no_provider_data",
-      detail: binanceGap?.detail
-        ?? "No curated Binance spot symbol exists for this token; the live price falls back to CoinGecko.",
+      reason: "provider_does_not_support_token",
+      detail: "Coinbase does not list a USD spot product for this token; the live price falls back to CoinGecko.",
     };
 
   const defillamaCoins: ProviderCoverage = llamaKey

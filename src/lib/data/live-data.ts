@@ -126,11 +126,11 @@ async function fetchLiveBinanceObservations(tokenIds: string[]): Promise<DbObser
 
   try {
     const tickers = await fetchCoinbaseTickers(mapped.map((item) => item.productId));
-    const nowIso = new Date().toISOString();
     let syntheticId = -1;
     return mapped.flatMap((item) => {
       const ticker = tickers.get(item.productId);
       if (!ticker) return [];
+      const nowIso = new Date(ticker.at).toISOString();
       const row = (metricId: string, value: number, sourceField: string, note: string): DbObservation => ({
         id: syntheticId--,
         token_id: item.tokenId,
