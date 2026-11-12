@@ -3,7 +3,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "../supabase/admin.ts";
 import { latestPerMetric, mergeById, readLatestObservations, readObservationWindow } from "./observation-reads.ts";
 import { readLivePrices } from "../providers/live-price-source.ts";
-import { onchainIdentityFor } from "../providers/run-dexpaprika-collection.ts";
+import { onchainIdentityFor } from "../../data/onchain-identity.ts";
 import { COINBASE_CHANGE_NOTE, COINBASE_PRICE_NOTE } from "../providers/coinbase.ts";
 import { BINANCE_CHANGE_NOTE, BINANCE_PRICE_NOTE } from "../providers/binance.ts";
 import { memoizeWithTtl } from "./ttl-cache.ts";
@@ -12,7 +12,7 @@ import { selectMovers, type Movers } from "../ui/movers.ts";
 import { buildTechnicalIndicators, INDICATOR_METHOD, withExtraIndicators } from "../indicators/build.ts";
 import { buildConcentrationIndicators } from "../indicators/onchain-concentration.ts";
 import type { TechnicalIndicatorsView } from "../../types/technical-indicators.ts";
-import { PROVIDER_STEPS, type ProviderStep, type RefreshStep } from "../refresh/config.ts";
+import { FRESHNESS_PROVIDERS, type FreshnessProvider, type RefreshStep } from "../refresh/config.ts";
 import { buildDatasetFreshness, buildRefreshStatus, type RefreshStatusView } from "../refresh/freshness.ts";
 import { buildHistoricalSeries } from "./historical-series.ts";
 import { sevenDayVolume, sevenDayVolumeBands, type VolumePoint } from "./seven-day-volume.ts";
@@ -55,11 +55,16 @@ async function withConcurrencyLimit<T>(limit: number, tasks: Array<() => Promise
   return results;
 }
 
+const DEX_ONLY_METRICS = [
+  "dex_pool_count", "dex_buy_volume_24h_usd", "dex_sell_volume_24h_usd", "dex_volume_1h_usd", "dex_volume_6h_usd",
+  "dex_transactions_1h_count", "dex_transactions_6h_count", "dex_price_change_1h_pct", "dex_price_change_6h_pct",
+  "dex_price_high_24h_usd", "dex_price_low_24h_usd", "dex_volume_7d_usd", "dex_volume_30d_usd",
+];
 const OBSERVED_METRICS = [
   "price_usd", "price_change_24h_pct", "price_change_7d_pct", "market_cap_usd", "volume_24h_usd",
   "tvl_usd", "fees_24h_usd", "revenue_24h_usd", "circulating_supply", "total_supply", "maximum_supply",
-  // DEX Screener exact-address transaction counts (market scope), shown in Market Structure.
-  "transactions_24h_count", "buys_24h_count", "sells_24h_count",
+  // DexPaprika token-wide DEX figures (market scope, exact address), shown in Market Structure and On-chain markets.
+  "transactions_24h_count", "buys_24h_count", "sells_24h_count", "liquidity_usd", ...DEX_ONLY_METRICS,
 ];
 /** Dashboard calculated metrics that need an associated protocol / a DEX mapping to be meaningful. */
 const PROTOCOL_DEPENDENT: DashboardCalculatedKey[] = ["market_cap_to_tvl", "market_cap_to_revenue_24h"];
@@ -89,7 +94,7 @@ type DbObservation = {
   token_id: string;
   chain_id: string;
   metric_id: string;
-  provider_id: "coingecko" | "binance" | "defillama" | "dexscreener" | "defillama_coins" | "geckoterminal";
+  provider_id: "coingecko" | "binance" | "defillama" | "dexpaprika" | "defillama_coins";
   value: number | string | null;
   status: string;
   observed_at: string;
@@ -536,13 +541,6 @@ const HISTORY_SERIES = [
 ];
 /** Extra history read only for technical indicators (price, volume, market cap and TVL come from HISTORY_SERIES). */
 const INDICATOR_EXTRA_SERIES = [{ providerId: "coingecko", metricId: "circulating_supply" }];
-/**
- * GeckoTerminal's own normalized aggregates (market scope, exact-address only):
- * liquidity_usd is its most liquid pool's reserve, volume_24h_usd is summed
- * across every matched pool, mirroring the DEX Screener normalizer's semantics
- * but from GeckoTerminal's own pool coverage and snapshot time.
- */
-
 type DbCalculatedValue = {
   id: number;
   token_id: string;
@@ -587,7 +585,7 @@ export function attachDashboardExtras(
     const canonical = canonicalTokens.find((candidate) => candidate.id === token.id);
     const coverage = canonical ? tokenCoverage(canonical) : [];
     const protocolMapped = coverage.some((item) => item.provider === "defillama" && item.status === "mapped");
-    const dexMapped = coverage.some((item) => item.provider === "dexscreener" && item.status === "mapped");
+    const dexMapped = coverage.some((item) => item.provider === "dexpaprika" && item.status === "mapped");
     const stored = extras.calculated.get(token.id) ?? {};
     const calculated: Partial<Record<DashboardCalculatedKey, number | null>> = {};
     for (const key of DASHBOARD_CALCULATED_METRICS) {
@@ -661,7 +659,7 @@ async function readReportedFdv(client: SupabaseAdminClient, tokenIds: string[]):
   // view (same fix as readTokenLogos below, for the same reason): that view's DISTINCT ON
   // over the full raw_provider_records table has no matching index and was intermittently
   // hitting the 2-minute statement_timeout under concurrent load (dashboard reads racing
-  // the refresh/GeckoTerminal/retention cron ticks), which surfaced as FDV silently going
+  // the refresh/retention cron ticks), which surfaced as FDV silently going
   // blank. This query can use the same provider/endpoint/token/collected_at index the logo
   // read already relies on.
   try {
@@ -717,27 +715,9 @@ async function readTokenLogos(client: SupabaseAdminClient, tokenIds: string[]): 
   }
 }
 
-type GeckoTerminalRawPool = {
-  attributes?: {
-    address?: string;
-    pool_created_at?: string | null;
-    reserve_in_usd?: string | number | null;
-    volume_usd?: { h24?: string | number | null };
-    token_price_usd?: string | number | null;
-  };
-};
-
-/**
- * GeckoTerminal on-chain pools for this token's exact network/address identity.
- * `provider_pairs` holds the indexed pool identity (address, DEX, creation
- * time); per-pool liquidity/volume are not separate columns (avoiding
- * duplicate metric storage), so they are read back from the same raw payload
- * already preserved in `raw_provider_records` and matched by pool address.
- * Optional: a failed read leaves pools empty rather than failing the profile.
- */
 /**
  * Latest on-chain DEX pool snapshot for a token (DexPaprika, refreshed about every 90 minutes by
- * /api/cron/dex-pools), most liquid pool first. Optional: a failed read or a token with no snapshot yet leaves
+ * /api/cron/dexpaprika), most liquid pool first. Optional: a failed read or a token with no snapshot yet leaves
  * the pool list empty rather than failing the profile. `primary` is the most liquid pool, which supplies the
  * price change, FDV and market cap shown with the pools.
  */
@@ -747,7 +727,7 @@ export async function readDexPools(
 ): Promise<{
   dexes: string[];
   pools: OnchainMarketsData["pools"];
-  primary: { priceChange24hPct: number | null; fdvUsd: number | null; marketCapUsd: number | null } | null;
+  primary: { priceChange24hPct: number | null } | null;
   collectedAt: string | null;
 }> {
   const empty = { pools: [], dexes: [], primary: null, collectedAt: null };
@@ -770,7 +750,7 @@ export async function readDexPools(
       pools,
       dexes: [...new Set(pools.map((pool) => pool.dexId).filter((id): id is string => Boolean(id)))],
       primary: lead
-        ? { priceChange24hPct: numberValue(lead.priceChange24hPct), fdvUsd: numberValue(lead.fdvUsd), marketCapUsd: numberValue(lead.marketCapUsd) }
+        ? { priceChange24hPct: numberValue(lead.priceChange24hPct) }
         : null,
       collectedAt: row.pools_at,
     };
@@ -798,49 +778,6 @@ export async function readExchangeVolumes(
   } catch (error) {
     console.error(`Exchange volume read failed for ${tokenId} (section omitted):`, error);
     return null;
-  }
-}
-
-export async function readGeckoTerminalPools(
-  client: SupabaseAdminClient,
-  tokenId: string,
-): Promise<{ dexes: string[]; pools: OnchainMarketsData["pools"]; collectedAt: string | null }> {
-  try {
-    const [pairsResult, rawResult] = await Promise.all([
-      client.from("provider_pairs")
-        .select("pair_address,dex_id,pair_created_at")
-        .eq("provider_id", "geckoterminal").eq("token_id", tokenId),
-      client.from("latest_raw_provider_records")
-        .select("collected_at,payload")
-        .eq("provider_id", "geckoterminal").eq("token_id", tokenId).maybeSingle(),
-    ]);
-    if (pairsResult.error) throw pairsResult.error;
-    if (rawResult.error) throw rawResult.error;
-    const pairRows = (pairsResult.data ?? []) as { pair_address: string; dex_id: string | null; pair_created_at: string | null }[];
-    const rawRecord = rawResult.data as { collected_at?: string; payload?: { providerPools?: GeckoTerminalRawPool[] } } | null;
-    const rawPools = rawRecord?.payload?.providerPools ?? [];
-    const poolByAddress = new Map(rawPools
-      .filter((pool) => pool.attributes?.address)
-      .map((pool) => [pool.attributes!.address!.toLowerCase(), pool]));
-    const pools = pairRows.map((row) => {
-      const raw = poolByAddress.get(row.pair_address.toLowerCase());
-      return {
-        pairAddress: row.pair_address,
-        dexId: row.dex_id,
-        createdAt: row.pair_created_at,
-        liquidityUsd: numberValue(raw?.attributes?.reserve_in_usd),
-        volume24hUsd: numberValue(raw?.attributes?.volume_usd?.h24),
-        priceUsd: numberValue(raw?.attributes?.token_price_usd),
-      };
-    });
-    return {
-      pools,
-      dexes: [...new Set(pools.map((pool) => pool.dexId).filter((id): id is string => Boolean(id)))],
-      collectedAt: rawRecord?.collected_at ?? null,
-    };
-  } catch (error) {
-    console.error(`GeckoTerminal pool read failed for ${tokenId} (shown as unavailable):`, error);
-    return { pools: [], dexes: [], collectedAt: null };
   }
 }
 
@@ -872,10 +809,10 @@ async function readLatest(client: SupabaseAdminClient, tokenIds: string[]): Prom
 }
 
 async function readRefreshStatus(client: SupabaseAdminClient, latestRows: DbObservation[], now = new Date()): Promise<RefreshStatusView> {
-  const latestCollected: Partial<Record<ProviderStep, string>> = {};
+  const latestCollected: Partial<Record<FreshnessProvider, string>> = {};
   for (const row of latestRows) {
-    const provider = row.provider_id as ProviderStep;
-    if (PROVIDER_STEPS.includes(provider) && (!latestCollected[provider] || row.collected_at > latestCollected[provider]!)) {
+    const provider = row.provider_id as FreshnessProvider;
+    if (FRESHNESS_PROVIDERS.includes(provider) && (!latestCollected[provider] || row.collected_at > latestCollected[provider]!)) {
       latestCollected[provider] = row.collected_at;
     }
   }
@@ -1047,28 +984,43 @@ async function getLiveTokenProfileUncached(
   const coverage = canonicalToken ? tokenCoverage(canonicalToken) : [];
   const tokenLevelPriceRow = observationFor(observations, tokenId, "defillama_coins", "price_usd");
   const protocolMapping = defillamaProtocolMappings.find((mapping) => mapping.tokenId === tokenId);
-  const dexMapped = coverage.some((item) => item.provider === "dexscreener" && item.status === "mapped");
+  const dexMapped = coverage.some((item) => item.provider === "dexpaprika" && item.status === "mapped");
   // Market-scope counts only for a curated exact-address mapping; never from a wrapped proxy.
-  const dexCount = (metricId: string) => dexMapped ? observationValue(observationFor(observations, tokenId, "dexscreener", metricId)) : null;
+  const dexCount = (metricId: string) => dexMapped ? observationValue(observationFor(observations, tokenId, "dexpaprika", metricId)) : null;
   const protocolMapped = coverage.some((item) => item.provider === "defillama" && item.status === "mapped");
-  // On-chain identity: network + exact contract address, from the curated mappings (the DEX Screener mapping plus
-  // the extra DexPaprika-only ones), never a wrapped or ticker-matched substitute. The chain name reuses this
+  // On-chain identity: network + exact contract address, from the curated mappings (the curated on-chain mappings), never a wrapped or ticker-matched substitute. The chain name reuses this
   // token's own chain lookup, since the canonical chain the mapping is keyed to is always this token's own chain.
-  // Liquidity is the most liquid pool's, volume is summed across the stored pools, and the price change, FDV
-  // and market cap are the most liquid pool's, all from the pool snapshot.
+  // Token-wide figures (liquidity, volume, transactions, pool count, shorter windows, price range) are DexPaprika's
+  // token endpoint values; the 24h price change is the most liquid stored pool's. FDV and market cap are CoinGecko's
+  // and shown in Tokenomics, so they are not repeated here.
   const onchainMapping = onchainIdentityFor(tokenId);
-  const poolVolumes = dexPools.pools.map((pool) => pool.volume24hUsd).filter((value): value is number => value !== null);
+  const dexValue = (metricId: string) => observationValue(observationFor(observations, tokenId, "dexpaprika", metricId));
   const onchainMarkets: OnchainMarketsData | null = onchainMapping
     ? {
       network: onchainMapping.chainId === tokenRow.chain_id ? (chain?.name ?? onchainMapping.chainId) : onchainMapping.chainId,
       contractAddress: onchainMapping.tokenAddress,
-      liquidityUsd: dexPools.pools[0]?.liquidityUsd ?? null,
-      volume24hUsd: poolVolumes.length > 0 ? poolVolumes.reduce((sum, value) => sum + value, 0) : null,
+      liquidityUsd: dexValue("liquidity_usd"),
+      volume24hUsd: dexValue("volume_24h_usd"),
       priceChange24hPct: dexPools.primary?.priceChange24hPct ?? null,
-      fdvUsd: dexPools.primary?.fdvUsd ?? null,
-      marketCapUsd: dexPools.primary?.marketCapUsd ?? null,
+      fdvUsd: null,
+      marketCapUsd: null,
       dexes: dexPools.dexes,
       pools: dexPools.pools,
+      poolCount: dexValue("dex_pool_count"),
+      activity: {
+        buyVolume24hUsd: dexValue("dex_buy_volume_24h_usd"),
+        sellVolume24hUsd: dexValue("dex_sell_volume_24h_usd"),
+        volume1hUsd: dexValue("dex_volume_1h_usd"),
+        volume6hUsd: dexValue("dex_volume_6h_usd"),
+        transactions1h: dexValue("dex_transactions_1h_count"),
+        transactions6h: dexValue("dex_transactions_6h_count"),
+        priceChange1hPct: dexValue("dex_price_change_1h_pct"),
+        priceChange6hPct: dexValue("dex_price_change_6h_pct"),
+        priceHigh24hUsd: dexValue("dex_price_high_24h_usd"),
+        priceLow24hUsd: dexValue("dex_price_low_24h_usd"),
+        volume7dUsd: dexValue("dex_volume_7d_usd"),
+        volume30dUsd: dexValue("dex_volume_30d_usd"),
+      },
     }
     : null;
   let technicalIndicators: TechnicalIndicatorsView | null = null;
@@ -1100,12 +1052,12 @@ async function getLiveTokenProfileUncached(
     calculatedMetrics: calc,
     history: buildTokenHistory(tokenId, observations, new Date(), { defiLlamaMapped: mappings.some((mapping) => mapping.provider_id === "defillama") }),
     dataNotes: notes,
-    dexMapped: mappings.some((mapping) => mapping.provider_id === "dexscreener"),
+    dexMapped: mappings.some((mapping) => mapping.provider_id === "dexpaprika"),
     defiLlamaMapped: mappings.some((mapping) => mapping.provider_id === "defillama"),
     datasetFreshness: buildDatasetFreshness({
       rows: latestTokenRows,
       // Only datasets this token's profile actually shows; unmapped DEX/protocol rows never count.
-      relevant: ["coingecko", "defillama_coins", ...(dexMapped ? ["dexscreener" as const] : []), ...(protocolMapped && protocolMapping ? ["defillama" as const] : [])],
+      relevant: ["coingecko", "defillama_coins", ...(dexMapped ? ["dexpaprika" as const] : []), ...(protocolMapped && protocolMapping ? ["defillama" as const] : [])],
       calculatedAt: calc.map((item) => item.calculatedAt).sort().at(-1) ?? null,
       now: new Date(),
     }),

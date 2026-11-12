@@ -8,7 +8,6 @@
   ],
   "functions": {
     "src/app/api/cron/refresh/route.ts": { "memory": 512 },
-    "src/app/api/cron/geckoterminal/route.ts": { "memory": 512 },
     "src/app/api/cron/retention/route.ts": { "memory": 512 },
     "src/app/api/cron/exchanges/route.ts": { "memory": 512 },
     "src/app/api/live-prices/route.ts": { "memory": 512 }

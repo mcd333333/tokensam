@@ -1,5 +1,7 @@
-import { CALCULATED_METRICS, calculateAllMetrics, type CalculatedMetricRow, type ObservationInput, type RawRecordInput, type TokenInput } from "./engine.ts";
-import { LATEST_READ_WINDOW_MS, mergeById, readLatestRawRecords, readPages } from "../data/observation-reads.ts";
+import { CALCULATED_METRICS, calculateAllMetrics, type CalculatedMetricRow, type ObservationInput, type TokenInput } from "./engine.ts";
+import { LATEST_READ_WINDOW_MS, mergeById, readPages } from "../data/observation-reads.ts";
+import { COINGECKO_MARKETS_ENDPOINT, reportedFdvFromRecords, type MarketFieldRecord } from "../data/token-logos.ts";
+import type { EngineExternalInputs } from "./engine.ts";
 import { recordApproxRead } from "../monitoring/quota-tracker.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
@@ -19,8 +21,8 @@ export const SERIES_INPUTS = [
 /**
  * Every (provider, metric) pair the engine reads as a latest value (engine.ts: chooseLatest/series).
  * Reading only these, instead of the latest row for every provider and metric, cut the per-run
- * download by about two thirds: the rest (CoinGecko supply and change percentages, DEX Screener
- * price/market cap/change/transactions, DeFiLlama Coins prices) is never consumed by the engine,
+ * download by about two thirds: the rest (CoinGecko supply and change percentages, DexPaprika
+ * price changes/volumes/transactions, DeFiLlama Coins prices) is never consumed by the engine,
  * and several of those rows carry ~400-character notes. tests/refresh.test.mjs asserts that
  * filtering to this list leaves the engine's output unchanged.
  */
@@ -31,11 +33,11 @@ export const LATEST_INPUTS = [
   { providerId: "defillama", metricId: "tvl_usd" },
   { providerId: "defillama", metricId: "revenue_24h_usd" },
   { providerId: "defillama", metricId: "fees_24h_usd" },
-  { providerId: "dexscreener", metricId: "volume_24h_usd" },
-  { providerId: "dexscreener", metricId: "sells_24h_count" },
-  { providerId: "dexscreener", metricId: "buys_24h_count" },
-  { providerId: "dexscreener", metricId: "liquidity_usd" },
-  { providerId: "dexscreener", metricId: "fdv_usd" },
+  { providerId: "dexpaprika", metricId: "volume_24h_usd" },
+  { providerId: "dexpaprika", metricId: "sells_24h_count" },
+  { providerId: "dexpaprika", metricId: "buys_24h_count" },
+  { providerId: "dexpaprika", metricId: "liquidity_usd" },
+  { providerId: "dexpaprika", metricId: "dex_pool_count" },
 ];
 
 /**
@@ -55,6 +57,34 @@ export const SERIES_LOOKBACK_DAYS = 3;
 
 function throwOnError(error: { message: string } | null, action: string): void {
   if (error) throw new Error(`Supabase ${action} failed: ${error.message}`);
+}
+
+/** Stored DexPaprika pool lists and CoinGecko's reported FDV, the engine's two inputs outside token_metric_observations. */
+async function readEngineExternalInputs(client: SupabaseAdminClient, tokenIds: string[]): Promise<EngineExternalInputs> {
+  const external: EngineExternalInputs = { pools: {}, fdv: {} };
+  const poolsResult = await client.from("token_dex_pools").select("token_id,pools_at,pools").not("pools_at", "is", null);
+  throwOnError(poolsResult.error, "read stored DEX pools");
+  for (const row of (poolsResult.data ?? []) as { token_id: string; pools_at: string; pools: unknown }[]) {
+    if (!Array.isArray(row.pools)) continue;
+    external.pools![row.token_id] = {
+      poolsAt: row.pools_at,
+      pools: (row.pools as Record<string, unknown>[]).filter((pool) => typeof pool?.pairAddress === "string").map((pool) => ({
+        pairAddress: pool.pairAddress as string,
+        dexId: typeof pool.dexId === "string" ? pool.dexId : null,
+        liquidityUsd: typeof pool.liquidityUsd === "number" ? pool.liquidityUsd : null,
+        volume24hUsd: typeof pool.volume24hUsd === "number" ? pool.volume24hUsd : null,
+      })),
+    };
+  }
+  const fdvResult = await client.from("raw_provider_records")
+    .select("token_id,collected_at,endpoint_label,payload_id:payload->>id,fdv:payload->fully_diluted_valuation,price:payload->current_price")
+    .eq("provider_id", "coingecko").eq("endpoint_label", COINGECKO_MARKETS_ENDPOINT)
+    .in("token_id", tokenIds).is("excluded_reason", null)
+    .order("collected_at", { ascending: false }).limit(5000);
+  throwOnError(fdvResult.error, "read reported FDV");
+  const reported = reportedFdvFromRecords(((fdvResult.data ?? []) as unknown as MarketFieldRecord[]).slice().reverse());
+  for (const [tokenId, entry] of Object.entries(reported)) external.fdv![tokenId] = { value: entry.value, collectedAt: entry.collectedAt };
+  return external;
 }
 
 async function readTokens(client: SupabaseAdminClient): Promise<TokenInput[]> {
@@ -173,10 +203,10 @@ export async function runMetricsCalculation(client: SupabaseAdminClient, now = n
   const tokens = await readTokens(client);
   const tokenIds = tokens.map((token) => token.id);
   const observations = await readObservations(client, tokenIds, now);
-  const latestDexRaw = await readLatestRawRecords<RawRecordInput>(client, "dexscreener", "id,provider_id,token_id,chain_id,collected_at,endpoint_label,payload");
+  const external = await readEngineExternalInputs(client, tokenIds);
 
   const calculatedAt = now.toISOString();
-  const rows = calculateAllMetrics(tokens, observations, latestDexRaw, calculatedAt);
+  const rows = calculateAllMetrics(tokens, observations, external, calculatedAt);
 
   const { changed, unchangedIds, unchangedRows } = await splitUnchangedRows(client, rows);
   // calculated_at is what the dashboard's "newest run" read keys on (readDashboardCalculated), so
@@ -208,7 +238,7 @@ export async function runMetricsCalculation(client: SupabaseAdminClient, now = n
   return {
     tokens: tokens.length,
     providerObservationsRead: observations.length,
-    latestDexPairRecords: latestDexRaw.length,
+    storedDexPoolLists: Object.keys(external.pools ?? {}).length,
     rewrittenMetrics: toUpsert.length,
     touchedUnchangedMetrics: unchangedIds.length - touchFailed.length,
     calculatedMetrics: rows.length,

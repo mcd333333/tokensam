@@ -58,7 +58,7 @@ function providerWindowsFromFormula(formula: string): string[] {
   if (/volume_24h_usd|volume\.h24/.test(formula)) windows.push("Uses a provider-reported rolling 24-hour trading volume.");
   if (/revenue_24h_usd/.test(formula)) windows.push("Uses DeFiLlama's source-reported 24-hour protocol revenue total.");
   if (/fees_24h_usd/.test(formula)) windows.push("Uses DeFiLlama's source-reported 24-hour protocol fees total.");
-  if (/buys_24h_count|sells_24h_count/.test(formula)) windows.push("Uses DEX Screener's rolling 24-hour buy/sell transaction counts.");
+  if (/buys_24h_count|sells_24h_count/.test(formula)) windows.push("Uses DexPaprika's rolling 24-hour buy/sell transaction counts.");
   return windows;
 }
 

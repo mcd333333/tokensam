@@ -70,8 +70,7 @@ function observationKey(row: {
  * collector-diagnostics.ts); only the CoinGecko caller currently passes it,
  * so every other provider's behavior here is unchanged.
  *
- * `signal`, when passed (currently only by the GeckoTerminal scheduled route,
- * which ties it to its own end-to-end deadline), is attached to every
+ * `signal`, when passed (a collector may tie it to its own end-to-end deadline), is attached to every
  * Supabase call via `.abortSignal()`. This is real cancellation of the
  * client-side request: aborting closes the underlying HTTP connection to
  * PostgREST immediately, so this function stops waiting *and* stops sending
@@ -80,7 +79,7 @@ function observationKey(row: {
  * that depends on Postgres noticing the closed connection, which is
  * best-effort and not immediate. No caller relies on the query having
  * actually stopped server-side; they only rely on not being blocked by it.
- * Omitted (the CoinGecko/DEX Screener/DeFiLlama path), behavior is identical
+ * Omitted (the CoinGecko/DexPaprika/DeFiLlama path), behavior is identical
  * to before this parameter existed.
  */
 export async function persistProviderSnapshots(

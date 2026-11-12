@@ -37,7 +37,7 @@ test("1. a Phase 16 token with no stored observations yet still resolves (never 
   assert.equal(profile.isNative, true);
   assert.equal(profile.contractAddress, null);
   assert.equal(profile.coverage.find((item) => item.provider === "coingecko").status, "mapped");
-  assert.equal(profile.coverage.find((item) => item.provider === "dexscreener").status, "unavailable");
+  assert.equal(profile.coverage.find((item) => item.provider === "dexpaprika").status, "unavailable");
 });
 
 test("2. a Phase 16 token with a stored CoinGecko observation shows real, non-fabricated market data", async () => {
@@ -78,16 +78,16 @@ test("4. an unknown token id still resolves to null (real 404), proving Phase 16
   assert.equal(profile, null);
 });
 
-test("6. Phase 16 tokens with no DEX Screener mapping never fabricate market-structure data (UI and AI evidence)", async () => {
+test("6. Phase 16 tokens with no DexPaprika mapping never fabricate market-structure data (UI and AI evidence)", async () => {
   const unmapped = ["fantom-ftm", "ethereum-snx", "solana-mnde", "kucoin-kcs"];
   for (const tokenId of unmapped) {
     const data = await profileFor(tokenId);
     assert.ok(data, `${tokenId} resolves`);
-    assert.equal(data.dexMapped, false, `${tokenId} has no DEX Screener mapping`);
+    assert.equal(data.dexMapped, false, `${tokenId} has no DexPaprika mapping`);
     assert.equal(data.dexActivity.transactions24h, null, `${tokenId}: no fabricated transaction count`);
     assert.equal(data.dexActivity.buys24h, null);
     assert.equal(data.dexActivity.sells24h, null);
-    assert.equal(data.coverage.find((item) => item.provider === "dexscreener").status, "unavailable");
+    assert.equal(data.coverage.find((item) => item.provider === "dexpaprika").status, "unavailable");
 
     const model = buildProfileModel(data);
     assert.equal(model.marketStructure.available, false, `${tokenId}: Market Structure section is hidden rather than showing fabricated zeros`);

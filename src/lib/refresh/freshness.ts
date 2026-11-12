@@ -1,9 +1,9 @@
-import { PROVIDER_STEPS, REFRESH_POLICY, type ProviderStep, type RefreshStep } from "./config.ts";
+import { FRESHNESS_PROVIDERS, REFRESH_POLICY, type FreshnessProvider, type RefreshStep } from "./config.ts";
 
 export type FreshnessState = "current" | "stale" | "unavailable";
 
 export type ProviderFreshness = {
-  id: ProviderStep;
+  id: FreshnessProvider;
   label: string;
   refreshedAt: string | null;
   ageLabel: string | null;
@@ -38,13 +38,13 @@ function newest(...values: (string | null | undefined)[]): string | null {
  */
 export function buildRefreshStatus(input: {
   lastSuccess: Partial<Record<RefreshStep, string>>;
-  latestCollected: Partial<Record<ProviderStep, string>>;
+  latestCollected: Partial<Record<FreshnessProvider, string>>;
   latestRunStatus: string | null;
   now: Date;
 }): RefreshStatusView {
-  const providers = PROVIDER_STEPS.map((id) => {
+  const providers = FRESHNESS_PROVIDERS.map((id) => {
     const policy = REFRESH_POLICY[id];
-    const refreshedAt = newest(input.lastSuccess[id], input.latestCollected[id]);
+    const refreshedAt = newest(input.lastSuccess[id as RefreshStep], input.latestCollected[id]);
     const state: FreshnessState = !refreshedAt
       ? "unavailable"
       : input.now.getTime() - Date.parse(refreshedAt) > policy.staleAfterMs ? "stale" : "current";
@@ -55,7 +55,7 @@ export function buildRefreshStatus(input: {
 
 /** Freshness of one dataset for one token: its own latest collection, never a global refresh time. */
 export type DatasetFreshness = {
-  id: ProviderStep | "metrics";
+  id: FreshnessProvider | "metrics";
   label: string;
   /** When the latest available observation (or calculation) for this token was stored. */
   collectedAt: string;
@@ -77,12 +77,12 @@ type FreshnessRow = { provider_id: string; status: string; observed_at: string; 
  */
 export function buildDatasetFreshness(input: {
   rows: FreshnessRow[];
-  relevant: ProviderStep[];
+  relevant: FreshnessProvider[];
   calculatedAt: string | null;
   now: Date;
 }): DatasetFreshness[] {
   const datasets: DatasetFreshness[] = [];
-  for (const id of PROVIDER_STEPS) {
+  for (const id of FRESHNESS_PROVIDERS) {
     if (!input.relevant.includes(id)) continue;
     const rows = input.rows.filter((row) => row.provider_id === id && row.status === "available");
     const collectedAt = newest(...rows.map((row) => row.collected_at));

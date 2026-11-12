@@ -184,7 +184,7 @@ test("only the declared series feed indicators: 24h/7d changes, DEX prices and w
   const noise = [
     ...daily("price_change_7d_pct", "coingecko", wave(90, 50)),
     ...daily("price_change_24h_pct", "coingecko", wave(90, 5)),
-    ...daily("price_usd", "dexscreener", wave(90, 999)),
+    ...daily("price_usd", "dexpaprika", wave(90, 999)),
     ...daily("price_usd", "defillama_coins", wave(90, 555)),
   ];
   assert.deepEqual(JSON.stringify(evaluate(base).view.groups.map((g) => g.indicators.map((i) => i.readings))),
@@ -346,7 +346,7 @@ test("research order: overview → market → fundamentals → tokenomics → hi
     ],
     history: buildTokenHistory("aave-aave", rows.map((r) => ({ ...r, token_id: "aave-aave", chain_id: "ethereum", collected_at: r.observed_at, source_field: r.metric_id, note: null })), AS_OF),
     dataNotes: [], dexMapped: true, defiLlamaMapped: true, refreshStatus: { providers: [], metricsCalculatedAt: null, latestRunStatus: null },
-    coverage: [{ provider: "defillama", status: "mapped" }, { provider: "dexscreener", status: "mapped" }],
+    coverage: [{ provider: "defillama", status: "mapped" }, { provider: "dexpaprika", status: "mapped" }],
     tokenLevelPrice: null, logoUrl: null, protocol: { name: "Aave", aggregatesVersions: true },
     dexActivity: { transactions24h: 1200, buys24h: 700, sells24h: 500 },
   };

@@ -33,7 +33,7 @@ const rows = [
   observation("price_usd", "coingecko", 6, 1.01, "available", 1),
   observation("price_usd", "coingecko", 1, 1.02, "available", 2),
   observation("price_usd", "coingecko", 0, null, "unavailable", 3),
-  observation("price_usd", "dexscreener", 0, 99, "available", 4),
+  observation("price_usd", "dexpaprika", 0, 99, "available", 4),
   observation("price_change_24h_pct", "coingecko", 0, 0, "available", 5),
   observation("price_change_7d_pct", "coingecko", 0, 1.5, "available", 6),
   observation("market_cap_usd", "coingecko", 0, 0, "available", 7),

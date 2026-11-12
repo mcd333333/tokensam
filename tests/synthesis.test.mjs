@@ -319,7 +319,7 @@ test("E3. a market-only token (no fundamentals, no DEX mapping at all) still pro
   const findings = [
     { category: "marketPerformance", findingType: "multi_horizon_consistent_down_steady", severity: "high", evidenceIds: ["hist:price_7d", "hist:price_30d", "hist:price_90d"], observationPeriods: ["7D", "30D", "90D"], data: {}, horizons: [{ key: "7d", days: 7, raw: -10, value: "-10.00%", period: "7D", id: "hist:price_7d" }, { key: "30d", days: 30, raw: -22, value: "-22.00%", period: "30D", id: "hist:price_30d" }, { key: "90d", days: 90, raw: -40, value: "-40.00%", period: "90D", id: "hist:price_90d" }] },
     { category: "dataQuality", findingType: "unmapped_defillama", severity: "low", evidenceIds: ["scope:defillama"], observationPeriods: [null], data: {} },
-    { category: "dataQuality", findingType: "unmapped_dexscreener", severity: "low", evidenceIds: ["scope:dexscreener"], observationPeriods: [null], data: {} },
+    { category: "dataQuality", findingType: "unmapped_dexpaprika", severity: "low", evidenceIds: ["scope:dexpaprika"], observationPeriods: [null], data: {} },
   ];
   const result = synthesize(findings);
   assert.ok(result.thesisDrivers.length > 0, "thin data must never leave the report with zero analytical drivers when a real market signal exists");
@@ -477,8 +477,8 @@ const UNI_LIKE = await payloadFor("uniswap-uni", seed("uniswap-uni", "ethereum",
   ["coingecko", "price_change_7d_pct", 6.25, 0.5, { window_days: 7 }],
   ["coingecko", "circulating_supply", 600_000_000], ["coingecko", "total_supply", 1_000_000_000], ["coingecko", "maximum_supply", 1_000_000_000],
   ["defillama", "tvl_usd", 4_000_000_000, 2], ["defillama", "fees_24h_usd", 1_500_000, 2], ["defillama", "revenue_24h_usd", 300_000, 2],
-  ["dexscreener", "liquidity_usd", 168_830, 0.5], ["dexscreener", "fdv_usd", 8_500_000_000, 0.5],
-  ["dexscreener", "transactions_24h_count", 12_400, 0.5], ["dexscreener", "buys_24h_count", 6_500, 0.5], ["dexscreener", "sells_24h_count", 5_900, 0.5],
+  ["dexpaprika", "liquidity_usd", 168_830, 0.5], ["dexpaprika", "fdv_usd", 8_500_000_000, 0.5],
+  ["dexpaprika", "transactions_24h_count", 12_400, 0.5], ["dexpaprika", "buys_24h_count", 6_500, 0.5], ["dexpaprika", "sells_24h_count", 5_900, 0.5],
 ], [
   { metric: "tvl_growth_pct", value: 8.2 }, { metric: "fees_growth_pct", value: 5.5 }, { metric: "revenue_growth_pct", value: 4.0 },
   { metric: "market_cap_to_tvl", value: 1.25 }, { metric: "fdv_to_tvl", value: 2.13 },
@@ -509,8 +509,8 @@ const SUI_LIKE = await payloadFor("sui-sui", seed("sui-sui", "sui", [
   ["coingecko", "market_cap_usd", 11_950_000_000], ["coingecko", "volume_24h_usd", 2_150_000_000],
   ["coingecko", "price_change_24h_pct", 1.8, 0.5, { window_days: 1 }], ["coingecko", "price_change_7d_pct", 10.3, 0.5, { window_days: 7 }],
   ["coingecko", "circulating_supply", 3_495_000_000], ["coingecko", "total_supply", 10_000_000_000], ["coingecko", "maximum_supply", 10_000_000_000],
-  ["dexscreener", "liquidity_usd", 4_200_000, 0.5], ["dexscreener", "fdv_usd", 34_200_000_000, 0.5],
-  ["dexscreener", "transactions_24h_count", 18422, 0.5], ["dexscreener", "buys_24h_count", 9800, 0.5], ["dexscreener", "sells_24h_count", 8622, 0.5],
+  ["dexpaprika", "liquidity_usd", 4_200_000, 0.5], ["dexpaprika", "fdv_usd", 34_200_000_000, 0.5],
+  ["dexpaprika", "transactions_24h_count", 18422, 0.5], ["dexpaprika", "buys_24h_count", 9800, 0.5], ["dexpaprika", "sells_24h_count", 8622, 0.5],
 ], [
   { metric: "dex_aggregate_liquidity_usd", value: 6_100_000 }, { metric: "dex_aggregate_volume_24h_usd", value: 22_000_000 },
   { metric: "dex_liquidity_to_market_cap_pct", value: 0.035 }, { metric: "dex_aggregate_liquidity_to_market_cap_pct", value: 0.051 },
@@ -554,8 +554,8 @@ const HYPE_LIKE = await payloadFor("hyperliquid-hype", seed("hyperliquid-hype", 
   ["coingecko", "price_change_7d_pct", 16.7, 0.5, { window_days: 7 }],
   ["coingecko", "circulating_supply", 334_000_000], ["coingecko", "total_supply", 1_000_000_000], ["coingecko", "maximum_supply", 1_000_000_000],
   ["defillama", "tvl_usd", 1_700_000_000, 2], ["defillama", "fees_24h_usd", 2_800_000, 2], ["defillama", "revenue_24h_usd", 2_800_000, 2],
-  ["dexscreener", "liquidity_usd", 5_400_000, 0.5], ["dexscreener", "fdv_usd", 38_500_000_000, 0.5],
-  ["dexscreener", "transactions_24h_count", 9_800, 0.5], ["dexscreener", "buys_24h_count", 5_600, 0.5], ["dexscreener", "sells_24h_count", 4_200, 0.5],
+  ["dexpaprika", "liquidity_usd", 5_400_000, 0.5], ["dexpaprika", "fdv_usd", 38_500_000_000, 0.5],
+  ["dexpaprika", "transactions_24h_count", 9_800, 0.5], ["dexpaprika", "buys_24h_count", 5_600, 0.5], ["dexpaprika", "sells_24h_count", 4_200, 0.5],
 ], [
   { metric: "tvl_growth_pct", value: 11.4 }, { metric: "fees_growth_pct", value: 9.1 }, { metric: "revenue_growth_pct", value: 9.1 },
   { metric: "market_cap_to_tvl", value: 7.6 }, { metric: "fdv_to_tvl", value: 22.6 },

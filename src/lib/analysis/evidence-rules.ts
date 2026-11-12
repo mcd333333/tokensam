@@ -11,7 +11,7 @@ import type { ResearchContext } from "./research-context.ts";
  * contain (sentiment labels, external crypto concepts, other assets).
  *
  * Mentioning a legitimate Token Samurai data provider (CoinGecko, DeFiLlama,
- * DEX Screener, GeckoTerminal) by name is never itself a violation, mapped or
+ * DexPaprika, GeckoTerminal) by name is never itself a violation, mapped or
  * not: Token Samurai genuinely uses all of them, and "further research could
  * examine DeFiLlama TVL data" or "no GeckoTerminal mapping is available for
  * this token" are both accurate, not fabricated. Only a claim that a provider

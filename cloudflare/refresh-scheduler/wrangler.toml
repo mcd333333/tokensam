@@ -4,11 +4,9 @@ compatibility_date = "2026-09-28"
 
 # Fires every 5 minutes. This is the only external clock for both scheduled
 # routes now: Vercel Hobby cannot run its own cron more often than once a
-# day, so /api/cron/refresh and /api/cron/geckoterminal are both invoked from
-# here. The refresh route's own due-check (REFRESH_POLICY/isProviderDue) decides
-# whether a tick does anything; GeckoTerminal is paced here instead: 7 one-token
-# ?slice=1 calls per tick, 6.5 s apart. See src/index.ts and
-# docs/geckoterminal-integration.md.
+# day, so /api/cron/refresh, /api/cron/dexpaprika and /api/cron/exchanges are invoked
+# from here. The refresh route's own due-check (REFRESH_POLICY/isProviderDue) decides
+# whether a tick does anything. See src/index.ts.
 [triggers]
 crons = ["*/5 * * * *"]
 
@@ -17,7 +15,7 @@ crons = ["*/5 * * * *"]
 # with `wrangler secret put CRON_SECRET` (or the Cloudflare dashboard), and
 # never commit it here.
 # REFRESH_URL is the Vercel production BASE URL, not a complete route URL —
-# the Worker appends /api/cron/refresh and /api/cron/geckoterminal to it
+# the Worker appends /api/cron/refresh (and the other cron routes) to it
 # itself (see src/index.ts). It is a plain (non-secret) var.
 #
 # COINGECKO_API_KEY (for the /coingecko-proxy route — see src/index.ts) is a secret, not

@@ -1,5 +1,5 @@
 /**
- * On-chain identities for tokens that the DEX Screener mapping (dexscreener-token-mappings.ts) never curated, so
+ * On-chain identities for tokens that the primary mapping (onchain-token-mappings.ts) never curated, so
  * they can have DEX pool data from DexPaprika.
  *
  * Identity is an explicit per-token decision, never a ticker lookup at runtime. Each address is CoinGecko's own

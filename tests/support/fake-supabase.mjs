@@ -4,10 +4,10 @@
 
 const IDENTITY_TABLES = new Set([
   "raw_provider_records", "token_metric_observations", "calculated_metric_observations",
-  "data_refresh_runs", "data_refresh_steps", "token_ai_analyses", "geckoterminal_sync_runs",
+  "data_refresh_runs", "data_refresh_steps", "token_ai_analyses",
 ]);
 /** Tables with a partial unique index permitting only one 'running' row (a lease-based single-run lock). */
-const SINGLE_RUNNING_ROW_TABLES = new Set(["data_refresh_runs", "geckoterminal_sync_runs"]);
+const SINGLE_RUNNING_ROW_TABLES = new Set(["data_refresh_runs"]);
 const VIEWS = {
   token_metric_observations_resolved: { source: "token_metric_observations" },
   latest_token_metric_observations: { source: "token_metric_observations", key: ["token_id", "provider_id", "metric_id"], order: ["observed_at", "collected_at", "id"] },
@@ -91,6 +91,7 @@ export function createFakeSupabase({ seed = {}, views = true, missingTables = []
     lte(column, value) { this.filters.push((row) => compare(row[column], value) <= 0); return this; }
     lt(column, value) { this.filters.push((row) => compare(row[column], value) < 0); return this; }
     is(column, value) { this.filters.push((row) => (row[column] ?? null) === value); return this; }
+    not(column, operator, value) { if (operator === "is") this.filters.push((row) => (row[column] ?? null) !== value); return this; }
     order(column, options = {}) { this.orders.push({ column, ascending: options.ascending !== false }); return this; }
     range(from, to) { this.from = from; this.to = to; return this; }
     limit(count) { this.limitCount = count; return this; }

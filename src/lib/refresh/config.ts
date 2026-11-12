@@ -1,7 +1,10 @@
-export type ProviderStep = "coingecko" | "defillama" | "dexscreener" | "defillama_coins";
+export type ProviderStep = "coingecko" | "defillama" | "defillama_coins";
+/** Datasets whose freshness is shown. DexPaprika is collected by its own cron route (/api/cron/dexpaprika), not as a refresh step. */
+export type FreshnessProvider = ProviderStep | "dexpaprika";
 export type RefreshStep = ProviderStep | "metrics";
 
-export const PROVIDER_STEPS: ProviderStep[] = ["coingecko", "dexscreener", "defillama", "defillama_coins"];
+export const PROVIDER_STEPS: ProviderStep[] = ["coingecko", "defillama", "defillama_coins"];
+export const FRESHNESS_PROVIDERS: FreshnessProvider[] = ["coingecko", "dexpaprika", "defillama", "defillama_coins"];
 
 const MINUTE = 60 * 1000;
 
@@ -23,16 +26,15 @@ const MINUTE = 60 * 1000;
  * CloudFront-level 403 unrelated to CoinGecko's own rate limiting), currently 3
  * calls/run, for ~8,640 calls/month against the documented 10,000/month Demo
  * allowance — reduce the interval or revisit the batch size if the token universe
- * grows enough to push this over quota. DEX Screener uses ~13 requests per run
- * against its documented 300/minute (unchanged by the Phase 16 token expansion,
- * which adds no new DEX Screener mappings). DeFiLlama publishes no numeric
+ * grows enough to push this over quota. DexPaprika is not a refresh step: its own cron route walks the
+ * on-chain tokens stalest-first (see run-dexpaprika-collection.ts). DeFiLlama publishes no numeric
  * free-tier limit, so it is refreshed least often.
  *
  * Providers run in parallel, then metrics (METRICS_TIMEOUT_MS). The longest
  * provider budget plus the metrics budget must stay below the cron route's
  * 300 s maxDuration: 150 s + 90 s = 240 s.
  */
-export const REFRESH_POLICY: Record<ProviderStep, { label: string; intervalMs: number; staleAfterMs: number; timeoutMs: number }> = {
+export const REFRESH_POLICY: Record<FreshnessProvider, { label: string; intervalMs: number; staleAfterMs: number; timeoutMs: number }> = {
   coingecko: { label: "CoinGecko", intervalMs: 15 * MINUTE, staleAfterMs: 3 * 60 * MINUTE, timeoutMs: 140_000 },
   // Binance is no longer a refresh-pipeline provider step: its live price/24h change is
   // fetched directly at render time instead (see fetchLiveBinanceObservations in
@@ -44,7 +46,8 @@ export const REFRESH_POLICY: Record<ProviderStep, { label: string; intervalMs: n
   // volume_24h_usd do), making it the second-largest contributor to the database-size
   // pressure this project kept running into. A live fetch gets the same freshness with
   // zero Supabase storage.
-  dexscreener: { label: "DEX Screener", intervalMs: 30 * MINUTE, staleAfterMs: 2 * 60 * MINUTE, timeoutMs: 40_000 },
+  // Not run by the orchestrator (see FreshnessProvider): each token's stats refresh about every 90 minutes.
+  dexpaprika: { label: "DexPaprika", intervalMs: 90 * MINUTE, staleAfterMs: 4 * 60 * MINUTE, timeoutMs: 40_000 },
   // Current TVL + fees + revenue: three small requests per protocol (72 for 24), paced 1.1 s apart.
   // Measured 2026-09-25 at 109 s for 24 protocols, so the budget is 150 s (pacing is unchanged).
   // Keep the 6-hour cadence because DeFiLlama does not publish a free-tier request limit or

@@ -297,7 +297,7 @@ function citedItems(ids: string[], check: Check): EvidenceItem[] {
  * `concept: "warning"` is used for forward-looking research questions/rationales, where naming a
  * concept to investigate is not the same as asserting it as fact (see furtherResearchQuestions).
  *
- * Naming a legitimate Token Samurai data provider (CoinGecko, DeFiLlama, DEX Screener,
+ * Naming a legitimate Token Samurai data provider (CoinGecko, DeFiLlama, DexPaprika,
  * GeckoTerminal) is never itself a violation, mapped or not — Token Samurai genuinely uses all of
  * them, so "no DeFiLlama mapping is available for this token" and "further research could examine
  * GeckoTerminal pool data" are both accurate. Only a specific fact attributed to a provider that

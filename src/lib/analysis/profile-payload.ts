@@ -72,7 +72,7 @@ export type PayloadField = {
 
 export type ScopeNote = {
   id: string;
-  provider: "CoinGecko" | "DeFiLlama" | "DEX Screener";
+  provider: "CoinGecko" | "DeFiLlama" | "DexPaprika";
   /** Curated mapping status for this token (from the profile's coverage record). */
   mapped: boolean;
   statement: string;
@@ -307,7 +307,7 @@ export function buildProfilePayload(data: LiveTokenProfileData): ProfilePayload 
   // ---- Scope and availability notes shown on the page ----
   const coverage = (provider: string) => data.coverage.find((item) => item.provider === provider);
   const protocolMapped = coverage("defillama")?.status === "mapped" && data.protocol !== null;
-  const dexMapped = coverage("dexscreener")?.status === "mapped";
+  const dexMapped = coverage("dexpaprika")?.status === "mapped";
   const scope: ScopeNote[] = [
     { id: "scope:coingecko", provider: "CoinGecko", mapped: true, statement: "Market snapshot, overview, tokenomics, and market history are token-level market data." },
     {
@@ -315,8 +315,8 @@ export function buildProfilePayload(data: LiveTokenProfileData): ProfilePayload 
       statement: model.fundamentals.available ? `Fundamentals: ${model.fundamentals.scopeLine}` : `Fundamentals not shown: ${model.fundamentals.note.reason} (no DeFiLlama protocol mapping for this token, so protocol TVL, fees, and revenue are unavailable by design).`,
     },
     {
-      id: "scope:dexscreener", provider: "DEX Screener", mapped: dexMapped,
-      statement: model.marketStructure.available ? `Market structure: ${model.marketStructure.scopeLine}` : `DEX markets not shown: ${model.marketStructure.note.reason}${dexMapped ? "" : " (no verified DEX Screener address mapping for this token, so DEX metrics are unavailable by design)"}.`,
+      id: "scope:dexpaprika", provider: "DexPaprika", mapped: dexMapped,
+      statement: model.marketStructure.available ? `Market structure: ${model.marketStructure.scopeLine}` : `DEX markets not shown: ${model.marketStructure.note.reason}${dexMapped ? "" : " (no verified DexPaprika address mapping for this token, so DEX metrics are unavailable by design)"}.`,
     },
   ];
 

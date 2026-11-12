@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 
 import { MAX_POOLS_PER_TOKEN, dexPaprikaAddress, dexPaprikaNetwork, fetchDexPools, normalizeDexPools, DexPoolApiError } from "../src/lib/providers/dexpaprika-pools.ts";
 import { DEX_POOLS_REFRESH_AFTER_MS, DEX_STATS_REFRESH_AFTER_MS, dexPoolAssets, onchainIdentityFor, runDexPaprikaCollection } from "../src/lib/providers/run-dexpaprika-collection.ts";
+import { calculateTokenMetrics } from "../src/lib/metrics/engine.ts";
 import { buildDexPaprikaSnapshot, fetchTokenStats } from "../src/lib/providers/dexpaprika.ts";
 import { getLiveTokenProfile } from "../src/lib/data/live-data.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 import { buildProfileModel } from "../src/lib/ui/profile-model.ts";
-import { extraOnchainMappings } from "../src/data/dexpaprika-extra-mappings.ts";
+import { extraOnchainMappings } from "../src/data/onchain-extra-mappings.ts";
 import { createFakeSupabase } from "./support/fake-supabase.mjs";
 
 const cases = [];
@@ -252,12 +253,15 @@ test("only canonical-universe tokens are collected, so every row has a token to 
   for (const asset of dexPoolAssets) assert.ok(ids.has(asset.tokenId), asset.tokenId);
 });
 
-const profileFor = (tokenId, snapshot) => {
+const NOW_ISO = "2026-11-12T11:55:00.000Z";
+const dexObservation = (id, tokenId, chainId, metricId, value) => ({ id, token_id: tokenId, chain_id: chainId, provider_id: "dexpaprika", metric_id: metricId, raw_record_id: null, value, status: "available", observed_at: NOW_ISO, collected_at: NOW_ISO, window_days: null, source_field: metricId, note: null, scope: "market" });
+const profileFor = (tokenId, snapshot, observations = []) => {
   const token = canonicalTokens.find((candidate) => candidate.id === tokenId);
   const client = createFakeSupabase({ seed: {
     tokens: [{ id: token.id, name: token.name, symbol: token.symbol, chain_id: token.chainId, contract_address: token.contractAddress, is_native: token.isNative, category: token.category, description: token.identityNote }],
     chains: [{ id: token.chainId, name: token.chainName }],
     ...(snapshot ? { token_dex_pools: [{ token_id: tokenId, ...snapshot }] } : {}),
+    token_metric_observations: observations.map(([metricId, value], index) => dexObservation(index + 1, tokenId, token.chainId, metricId, value)),
   } }).client;
   return getLiveTokenProfile(tokenId, client);
 };
@@ -271,7 +275,7 @@ test("the curated extras are real, non-native, non-duplicated tokens, and their 
     assert.equal(token.isNative, false, `${mapping.tokenId} is not a native asset (wrapped assets are never substituted)`);
     assert.ok(!seen.has(mapping.tokenId), `${mapping.tokenId} is listed once`);
     seen.add(mapping.tokenId);
-    assert.deepEqual(onchainIdentityFor(mapping.tokenId), { chainId: mapping.canonicalChainId, tokenAddress: mapping.tokenAddress });
+    assert.deepEqual(onchainIdentityFor(mapping.tokenId), { chainId: mapping.canonicalChainId, tokenAddress: mapping.tokenAddress, network: mapping.network });
   }
   const assetIds = dexPoolAssets.map((asset) => asset.tokenId);
   assert.equal(new Set(assetIds).size, assetIds.length, "no token is collected twice");
@@ -279,19 +283,26 @@ test("the curated extras are real, non-native, non-duplicated tokens, and their 
   assert.equal(onchainIdentityFor("bitcoin-btc"), undefined, "a native asset has no on-chain identity");
 });
 
-test("a profile builds its DEX Markets and concentration from the stored DEX Screener pool snapshot", async () => {
+test("a profile builds its DEX Markets and concentration from the stored DexPaprika pool snapshot", async () => {
   const [first] = dexPoolAssets;
-  const data = await profileFor(first.tokenId, { fetched_at: "2026-11-12T11:55:00.000Z", pools: [
-    { pairAddress: "0xaaa", dexId: "uniswap_v3", liquidityUsd: 9_000_000, volume24hUsd: 4_000_000, priceUsd: 6.2, priceChange24hPct: -2.5, fdvUsd: null, marketCapUsd: null, createdAt: null },
-    { pairAddress: "0xbbb", dexId: "sushiswap", liquidityUsd: 1_000_000, volume24hUsd: 1_000_000, priceUsd: 6.2, priceChange24hPct: -2.4, fdvUsd: null, marketCapUsd: null, createdAt: "2021-05-01T00:00:00.000Z" },
-  ] });
-  assert.equal(data.onchainMarkets.liquidityUsd, 9_000_000, "most liquid pool");
-  assert.equal(data.onchainMarkets.volume24hUsd, 5_000_000, "summed across pools");
+  const data = await profileFor(first.tokenId, { pools_at: NOW_ISO, pools: [
+    { pairAddress: "0xaaa", dexId: "uniswap_v3", liquidityUsd: 9_000_000, volume24hUsd: 4_000_000, priceUsd: 6.2, priceChange24hPct: -2.5, createdAt: null },
+    { pairAddress: "0xbbb", dexId: "sushiswap", liquidityUsd: 1_000_000, volume24hUsd: 1_000_000, priceUsd: 6.2, priceChange24hPct: -2.4, createdAt: "2021-05-01T00:00:00.000Z" },
+  ] }, [["liquidity_usd", 12_000_000], ["volume_24h_usd", 7_500_000], ["dex_pool_count", 40], ["dex_volume_1h_usd", 90_000], ["dex_price_change_6h_pct", -1.2], ["dex_price_high_24h_usd", 6.9], ["dex_price_low_24h_usd", 6.1], ["dex_volume_7d_usd", 30_000_000]]);
+  assert.equal(data.onchainMarkets.liquidityUsd, 12_000_000, "DexPaprika's token-wide liquidity, not one pool's");
+  assert.equal(data.onchainMarkets.volume24hUsd, 7_500_000, "DexPaprika's token-wide volume");
+  assert.equal(data.onchainMarkets.poolCount, 40);
+  assert.equal(data.onchainMarkets.activity.volume1hUsd, 90_000);
+  assert.equal(data.onchainMarkets.activity.priceChange6hPct, -1.2);
+  assert.equal(data.onchainMarkets.activity.volume7dUsd, 30_000_000);
   assert.equal(data.onchainMarkets.priceChange24hPct, -2.5, "from the most liquid pool");
-  assert.equal(data.onchainMarkets.fdvUsd, null, "no FDV from the pool source, so that card is not shown");
+  assert.equal(data.onchainMarkets.fdvUsd, null, "FDV is CoinGecko's and shown in Tokenomics");
   assert.deepEqual(data.onchainMarkets.dexes, ["uniswap_v3", "sushiswap"]);
   const model = buildProfileModel(data);
   assert.equal(model.dexMarkets.available, true);
+  const cardIds = model.dexMarkets.cards.map((card) => card.id);
+  for (const id of ["dex_liquidity", "dex_volume", "dex_pool_count", "dex_price_change_24h", "dex_price_change_6h", "dex_price_range_24h", "dex_volume_7d"]) assert.ok(cardIds.includes(id), `${id} card shown`);
+  assert.ok(!cardIds.includes("dex_volume_30d"), "an absent data point shows no card");
   assert.deepEqual(model.dexMarkets.pools.map((pool) => pool.dexLabel), ["Uniswap V3", "Sushiswap"]);
   const hhi = data.technicalIndicators?.groups.flatMap((group) => group.indicators ?? []).find((item) => item.id === "pool_concentration_hhi");
   assert.ok(hhi, "the pool concentration indicator is built from the snapshot");
@@ -301,19 +312,43 @@ test("a profile builds its DEX Markets and concentration from the stored DEX Scr
 test("a token with more than 30 stored pools lists the 30 most liquid and counts the rest, while totals use all of them", async () => {
   const [, , third] = dexPoolAssets;
   const pools = Array.from({ length: 45 }, (_, index) => ({
-    pairAddress: `0x${index}`, dexId: "uniswap_v3", liquidityUsd: 1_000_000 - index * 1_000, volume24hUsd: 100, priceUsd: 1, priceChange24hPct: 0, fdvUsd: null, marketCapUsd: null, createdAt: null,
+    pairAddress: `0x${index}`, dexId: "uniswap_v3", liquidityUsd: 1_000_000 - index * 1_000, volume24hUsd: 100, priceUsd: 1, priceChange24hPct: 0, createdAt: null,
   }));
-  const data = await profileFor(third.tokenId, { fetched_at: "2026-11-12T11:55:00.000Z", pools });
+  const data = await profileFor(third.tokenId, { pools_at: NOW_ISO, pools }, [["volume_24h_usd", 4_500]]);
   const model = buildProfileModel(data);
   assert.equal(model.dexMarkets.pools.length, 30);
   assert.equal(model.dexMarkets.morePools, 15);
-  assert.equal(data.onchainMarkets.volume24hUsd, 4_500, "volume is summed over all 45 stored pools");
+  assert.equal(data.onchainMarkets.volume24hUsd, 4_500, "volume is DexPaprika's token-wide figure");
 });
 
 test("a mapped token with no snapshot yet shows no pools rather than failing", async () => {
   const data = await profileFor(dexPoolAssets[1].tokenId, null);
   assert.deepEqual(data.onchainMarkets.pools, []);
   assert.equal(buildProfileModel(data).dexMarkets.available, false);
+});
+
+test("calculated DEX metrics come from DexPaprika observations and the stored top pool; FDV ratios use CoinGecko's reported FDV", () => {
+  const token = { id: "uniswap-uni", chain_id: "ethereum", name: "Uniswap", symbol: "UNI" };
+  const row = (id, providerId, metricId, value, scope = "market") => ({ id, token_id: token.id, chain_id: token.chain_id, provider_id: providerId, metric_id: metricId, value, status: "available", observed_at: NOW_ISO, collected_at: NOW_ISO, scope, raw_record_id: null, source_field: metricId, note: null, window_days: null });
+  const observations = [
+    row(1, "dexpaprika", "liquidity_usd", 25_000_000), row(2, "dexpaprika", "volume_24h_usd", 6_800_000),
+    row(3, "dexpaprika", "buys_24h_count", 2_900), row(4, "dexpaprika", "sells_24h_count", 3_800),
+    row(5, "dexpaprika", "dex_pool_count", 997),
+    row(6, "coingecko", "market_cap_usd", 3_700_000_000, "token"), row(7, "defillama", "tvl_usd", 4_000_000_000, "protocol"),
+  ];
+  const external = { pools: { [token.id]: { poolsAt: NOW_ISO, pools: [{ pairAddress: "0xaaa", dexId: "uniswap_v3", liquidityUsd: 9_000_000, volume24hUsd: 4_000_000 }] } }, fdv: { [token.id]: { value: 6_100_000_000, collectedAt: NOW_ISO } } };
+  const byMetric = Object.fromEntries(calculateTokenMetrics(token, observations, external, NOW_ISO).map((metric) => [metric.metric_id, metric]));
+  assert.equal(byMetric.dex_aggregate_liquidity_usd.value, 25_000_000);
+  assert.equal(byMetric.dex_aggregate_volume_24h_usd.value, 6_800_000);
+  assert.equal(byMetric.dex_primary_pair_liquidity_usd.value, 9_000_000);
+  assert.equal(byMetric.dex_primary_pair_volume_24h_usd.value, 4_000_000);
+  assert.equal(byMetric.dex_volume_to_liquidity.value, 6_800_000 / 25_000_000);
+  assert.equal(byMetric.dex_buy_sell_ratio.value, 2_900 / 3_800);
+  assert.equal(byMetric.dex_aggregate_liquidity_to_market_cap_pct.value, (25_000_000 / 3_700_000_000) * 100);
+  assert.equal(byMetric.fdv_to_tvl.value, 6_100_000_000 / 4_000_000_000);
+  // Nothing stored for another token: every DEX figure is unavailable, never zero.
+  const none = Object.fromEntries(calculateTokenMetrics({ ...token, id: "x" }, observations, {}, NOW_ISO).map((metric) => [metric.metric_id, metric]));
+  assert.ok(["dex_aggregate_liquidity_usd", "dex_primary_pair_liquidity_usd", "fdv_to_tvl"].every((id) => none[id].status === "unavailable" && none[id].value === null));
 });
 
 let failures = 0;

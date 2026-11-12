@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { addressEquals } from "../providers/dexscreener.ts";
 
 /** v2: source-scope enforcement and scope-explicit metric names (token-centric architecture). */
-export const CALCULATION_VERSION = "6";
+export const CALCULATION_VERSION = "7";
 
 /**
  * The scope each provider input must have. A row with any other scope (for
@@ -14,7 +13,7 @@ export const CALCULATION_VERSION = "6";
 export const INPUT_SCOPES: Record<string, "token" | "protocol" | "market"> = {
   coingecko: "token",
   defillama: "protocol",
-  dexscreener: "market",
+  dexpaprika: "market",
 };
 
 export function hasCompatibleScope(row: { provider_id: string; scope?: string | null }): boolean {
@@ -83,9 +82,9 @@ export type CalculatedMetricRow = {
 
 export const CALCULATED_METRICS: MetricDefinition[] = [
   { id: "market_cap_to_tvl", name: "Market cap / associated protocol TVL", sourceScopes: "token/protocol", category: "valuation", unit: "ratio", formula: "CoinGecko market_cap_usd / DeFiLlama protocol tvl_usd" },
-  { id: "fdv_to_tvl", name: "DEX-reported FDV / associated protocol TVL", sourceScopes: "market/protocol", category: "valuation", unit: "ratio", formula: "DEX Screener primary-pair fdv_usd / DeFiLlama protocol tvl_usd" },
+  { id: "fdv_to_tvl", name: "FDV / associated protocol TVL", sourceScopes: "token/protocol", category: "valuation", unit: "ratio", formula: "CoinGecko-reported fully_diluted_valuation / DeFiLlama protocol tvl_usd" },
   { id: "market_cap_to_revenue_24h", name: "Market cap / associated protocol 24h revenue", sourceScopes: "token/protocol", category: "valuation", unit: "ratio", formula: "CoinGecko market_cap_usd / DeFiLlama revenue_24h_usd" },
-  { id: "fdv_to_revenue_24h", name: "DEX-reported FDV / associated protocol 24h revenue", sourceScopes: "market/protocol", category: "valuation", unit: "ratio", formula: "DEX Screener primary-pair fdv_usd / DeFiLlama revenue_24h_usd" },
+  { id: "fdv_to_revenue_24h", name: "FDV / associated protocol 24h revenue", sourceScopes: "token/protocol", category: "valuation", unit: "ratio", formula: "CoinGecko-reported fully_diluted_valuation / DeFiLlama revenue_24h_usd" },
   { id: "volume_to_market_cap", name: "Volume / market cap", sourceScopes: "token", category: "valuation", unit: "ratio", formula: "CoinGecko volume_24h_usd / CoinGecko market_cap_usd" },
   { id: "tvl_growth_pct", name: "Associated protocol TVL growth", sourceScopes: "protocol", category: "growth", unit: "percent", formula: "24h-normalized change: ((latest DeFiLlama tvl_usd / nearest available value around 24h earlier) ^ (24 / measured_hours) - 1) * 100; baseline tolerance ±6h" },
   { id: "revenue_growth_pct", name: "Associated protocol revenue growth", sourceScopes: "protocol", category: "growth", unit: "percent", formula: "24h-normalized change from the latest individual DeFiLlama revenue_24h_usd observation and the closest prior individual observation within ±6h of 24h earlier; daily aggregates are excluded" },
@@ -96,14 +95,14 @@ export const CALCULATED_METRICS: MetricDefinition[] = [
   { id: "price_change_vs_revenue_growth_pct_points", name: "Price change vs associated protocol revenue growth", sourceScopes: "token/protocol", category: "growth", unit: "percentage_points", formula: "price 24h-normalized percent change - revenue 24h-normalized percent change; revenue uses the latest individual DeFiLlama observation and closest prior individual observation within ±6h of 24h earlier" },
   { id: "market_cap_change_vs_tvl_growth_pct_points", name: "Market-cap change vs associated protocol TVL growth", sourceScopes: "token/protocol", category: "growth", unit: "percentage_points", formula: "market-cap 24h-normalized percent change - TVL 24h-normalized percent change; changes are compounded from latest observations within ±6h of 24h apart" },
   { id: "market_cap_change_vs_revenue_growth_pct_points", name: "Market-cap change vs associated protocol revenue growth", sourceScopes: "token/protocol", category: "growth", unit: "percentage_points", formula: "market-cap 24h-normalized percent change - revenue 24h-normalized percent change; revenue uses the latest individual DeFiLlama observation and closest prior individual observation within ±6h of 24h earlier" },
-  { id: "dex_aggregate_volume_24h_usd", name: "Aggregate DEX volume (24h)", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "sum exact-address DEX pair volume.h24" },
-  { id: "dex_aggregate_liquidity_usd", name: "Aggregate DEX liquidity", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "sum exact-address DEX pair liquidity.usd" },
-  { id: "dex_primary_pair_liquidity_usd", name: "Primary-pair liquidity", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "liquidity.usd for primary exact-address pair" },
-  { id: "dex_primary_pair_volume_24h_usd", name: "Primary-pair volume (24h)", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "volume.h24 for primary exact-address pair" },
+  { id: "dex_aggregate_volume_24h_usd", name: "Aggregate DEX volume (24h)", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "DexPaprika token-wide 24h volume across all of the token's pools" },
+  { id: "dex_aggregate_liquidity_usd", name: "Aggregate DEX liquidity", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "DexPaprika token-wide liquidity across all of the token's pools" },
+  { id: "dex_primary_pair_liquidity_usd", name: "Primary-pair liquidity", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "liquidity of the most liquid stored DexPaprika pool" },
+  { id: "dex_primary_pair_volume_24h_usd", name: "Primary-pair volume (24h)", sourceScopes: "market", category: "market_structure", unit: "USD", formula: "24h volume of the most liquid stored DexPaprika pool" },
   { id: "dex_liquidity_to_market_cap_pct", name: "Primary-pair liquidity / market cap", sourceScopes: "market/token", category: "market_structure", unit: "percent", formula: "primary-pair liquidity / CoinGecko market_cap_usd * 100" },
   { id: "dex_aggregate_liquidity_to_market_cap_pct", name: "Aggregate DEX liquidity / market cap", sourceScopes: "market/token", category: "market_structure", unit: "percent", formula: "aggregate DEX liquidity / CoinGecko market_cap_usd * 100" },
-  { id: "dex_volume_to_liquidity", name: "DEX volume / liquidity", sourceScopes: "market", category: "market_structure", unit: "ratio", formula: "aggregate exact-address DEX volume.h24 / aggregate exact-address DEX liquidity.usd" },
-  { id: "dex_buy_sell_ratio", name: "DEX buy / sell transaction ratio", sourceScopes: "market", category: "market_structure", unit: "ratio", formula: "exact-address DEX buys_24h_count / sells_24h_count" },
+  { id: "dex_volume_to_liquidity", name: "DEX volume / liquidity", sourceScopes: "market", category: "market_structure", unit: "ratio", formula: "DexPaprika token-wide 24h volume / token-wide liquidity" },
+  { id: "dex_buy_sell_ratio", name: "DEX buy / sell transaction ratio", sourceScopes: "market", category: "market_structure", unit: "ratio", formula: "DexPaprika buys_24h_count / sells_24h_count" },
   { id: "divergence_price_up_tvl_down", name: "Price up, associated protocol TVL down", sourceScopes: "token/protocol", category: "divergence", unit: "boolean", formula: "24h-normalized price growth > 0 AND 24h-normalized TVL growth < 0" },
   { id: "divergence_price_down_tvl_up", name: "Price down, associated protocol TVL up", sourceScopes: "token/protocol", category: "divergence", unit: "boolean", formula: "24h-normalized price growth < 0 AND 24h-normalized TVL growth > 0" },
   { id: "divergence_market_cap_up_faster_tvl", name: "Market cap grew faster than associated protocol TVL", sourceScopes: "token/protocol", category: "divergence", unit: "boolean", formula: "24h-normalized market-cap growth > 24h-normalized TVL growth" },
@@ -351,55 +350,19 @@ function alignedCrossChange(
   };
 }
 
-type Pair = {
-  chainId?: string;
-  pairAddress?: string;
-  url?: string;
-  dexId?: string;
-  baseToken?: { address?: string };
-  quoteToken?: { address?: string | null };
-  volume?: { h24?: number | null };
-  liquidity?: { usd?: number | null };
-  priceUsd?: number | string | null;
-  priceChange?: { h24?: number | null } | null;
-  fdv?: number | null;
-  marketCap?: number | null;
-  txns?: { h24?: { buys?: number | null; sells?: number | null } };
+/** A stored DexPaprika pool, most liquid first (see token_dex_pools). */
+export type DexPoolInput = { pairAddress: string; dexId?: string | null; liquidityUsd?: number | null; volume24hUsd?: number | null };
+/**
+ * Inputs that do not live in token_metric_observations: the stored pool list for each token (token_dex_pools,
+ * written by the DexPaprika collector) and CoinGecko's reported fully diluted valuation (from its stored
+ * /coins/markets payload).
+ */
+export type EngineExternalInputs = {
+  pools?: Record<string, { poolsAt: string; pools: DexPoolInput[] }>;
+  fdv?: Record<string, { value: number; collectedAt: string }>;
 };
 
-// Same rule as the collector; a separate chain list here once omitted Base.
-const addressMatch = addressEquals;
-
 function numberField(value: unknown): number | null { return numeric(value); }
-
-function sumField(pairs: Pair[], read: (pair: Pair) => unknown): number | null {
-  const values = pairs.map((pair) => numberField(read(pair))).filter((value): value is number => value !== null);
-  return values.length ? values.reduce((sum, value) => sum + value, 0) : null;
-}
-
-function pairOrder(a: Pair, b: Pair): number {
-  return (numberField(b.liquidity?.usd) ?? -1) - (numberField(a.liquidity?.usd) ?? -1)
-    || (numberField(b.volume?.h24) ?? -1) - (numberField(a.volume?.h24) ?? -1)
-    || (a.pairAddress ?? "").localeCompare(b.pairAddress ?? "");
-}
-
-function dexPairsForToken(token: TokenInput, records: RawRecordInput[]): { record?: RawRecordInput; pairs: Pair[]; primary?: Pair } {
-  const record = records.filter((item) => item.provider_id === "dexscreener" && item.token_id === token.id && item.chain_id === token.chain_id)
-    .sort((a, b) => Date.parse(b.collected_at) - Date.parse(a.collected_at) || b.id - a.id)[0];
-  const payload = record?.payload as { requestedChainId?: string; requestedTokenAddress?: string; providerPairs?: Pair[] } | null;
-  if (!record || !payload?.requestedChainId || !payload.requestedTokenAddress || !Array.isArray(payload.providerPairs)) return { record, pairs: [] };
-  const seen = new Set<string>();
-  const pairs = payload.providerPairs.filter((pair) => {
-    if (pair.chainId !== payload.requestedChainId || !pair.pairAddress || seen.has(pair.pairAddress)) return false;
-    if (!addressMatch(payload.requestedChainId as string, pair.baseToken?.address, payload.requestedTokenAddress)
-      && !addressMatch(payload.requestedChainId as string, pair.quoteToken?.address, payload.requestedTokenAddress)) return false;
-    seen.add(pair.pairAddress);
-    return true;
-  });
-  const bases = pairs.filter((pair) => addressMatch(payload.requestedChainId as string, pair.baseToken?.address, payload.requestedTokenAddress));
-  const primary = [...(bases.length ? bases : pairs)].sort(pairOrder)[0];
-  return { record, pairs, primary };
-}
 
 function divideValues(numerator: number | null, denominator: number | null, sources: SourceRef[], rawRecords: RawRecordInput[], multiplier = 1): Calculation {
   if (numerator === null || denominator === null) return unavailable("Required numeric source value is unavailable.", sources, rawRecords);
@@ -407,8 +370,6 @@ function divideValues(numerator: number | null, denominator: number | null, sour
   if (denominator === 0) return unavailable("Denominator is zero.", sources, rawRecords);
   return valid((numerator / denominator) * multiplier, sources, { rawRecords });
 }
-
-function sourceRaw(record?: RawRecordInput): RawRecordInput[] { return record ? [record] : []; }
 
 function metricSource(rows: ObservationInput[], provider: string, metric: string): ObservationInput | undefined {
   return chooseLatest(rows, provider, metric);
@@ -471,7 +432,7 @@ function buildCalculation(token: TokenInput, definition: MetricDefinition, calc:
 export function calculateTokenMetrics(
   token: TokenInput,
   observations: ObservationInput[],
-  rawRecords: RawRecordInput[],
+  external: EngineExternalInputs,
   calculatedAt = new Date().toISOString(),
 ): CalculatedMetricRow[] {
   const tokenRows = observations.filter((row) => row.token_id === token.id && row.chain_id === token.chain_id && hasCompatibleScope(row));
@@ -479,12 +440,16 @@ export function calculateTokenMetrics(
   const cgVolume = metricSource(tokenRows, "coingecko", "volume_24h_usd");
   const llamaTvl = metricSource(tokenRows, "defillama", "tvl_usd");
   const llamaRevenue = metricSource(tokenRows, "defillama", "revenue_24h_usd");
-  const dexFdv = metricSource(tokenRows, "dexscreener", "fdv_usd");
-  const dexBuys = metricSource(tokenRows, "dexscreener", "buys_24h_count");
-  const dexSells = metricSource(tokenRows, "dexscreener", "sells_24h_count");
-  const dexSeries = dexPairsForToken(token, rawRecords);
-  const dexRaw = sourceRaw(dexSeries.record);
-  const dexRawRefs = dexRaw.map((record) => ({ id: record.id, source_kind: "raw_record" as const, provider_id: record.provider_id, token_id: record.token_id, collected_at: record.collected_at, endpoint_label: record.endpoint_label }));
+  const dexBuys = metricSource(tokenRows, "dexpaprika", "buys_24h_count");
+  const dexSells = metricSource(tokenRows, "dexpaprika", "sells_24h_count");
+  const poolList = external.pools?.[token.id] ?? null;
+  const reportedFdv = external.fdv?.[token.id] ?? null;
+  const fdvRef: SourceRef[] = reportedFdv
+    ? [{ id: 0, source_kind: "raw_record", provider_id: "coingecko", token_id: token.id, collected_at: reportedFdv.collectedAt, endpoint_label: "fully_diluted_valuation", value: reportedFdv.value }]
+    : [];
+  const poolRef: SourceRef[] = poolList
+    ? [{ id: 0, source_kind: "raw_record", provider_id: "dexpaprika", token_id: token.id, collected_at: poolList.poolsAt, endpoint_label: "token_dex_pools" }]
+    : [];
 
   const priceSeries = series(tokenRows, "coingecko", "price_usd");
   const marketCapSeries = series(tokenRows, "coingecko", "market_cap_usd");
@@ -494,23 +459,29 @@ export function calculateTokenMetrics(
   const revenueSeries = series(tokenRows, "defillama", "revenue_24h_usd", { includeDailyAggregates: false });
   const feesSeries = series(tokenRows, "defillama", "fees_24h_usd");
 
-  const rawVolume = sumField(dexSeries.pairs, (pair) => pair.volume?.h24);
-  const rawLiquidity = sumField(dexSeries.pairs, (pair) => pair.liquidity?.usd);
-  const primaryLiquidity = numberField(dexSeries.primary?.liquidity?.usd);
-  const primaryVolume = numberField(dexSeries.primary?.volume?.h24);
-  const aggregateVolumeObs = metricSource(tokenRows, "dexscreener", "volume_24h_usd");
+  // Token-wide figures come from DexPaprika's token endpoint (all of the token's pools); the primary pair is the
+  // most liquid stored pool.
+  const aggregateLiquidityObs = metricSource(tokenRows, "dexpaprika", "liquidity_usd");
+  const aggregateVolumeObs = metricSource(tokenRows, "dexpaprika", "volume_24h_usd");
+  const rawLiquidity = valueOf(aggregateLiquidityObs);
+  const rawVolume = valueOf(aggregateVolumeObs);
+  const primary = poolList?.pools[0];
+  const primaryLiquidity = numberField(primary?.liquidityUsd);
+  const primaryVolume = numberField(primary?.volume24hUsd);
+  const poolCount = numeric(valueOf(metricSource(tokenRows, "dexpaprika", "dex_pool_count")));
   const aggregateLiquidityCalc = rawLiquidity === null
-    ? unavailable("No exact-address pair returned a numeric liquidity.usd value.", dexRawRefs, dexRaw)
-    : valid(rawLiquidity, dexRawRefs, { rawRecords: dexRaw, startAt: dexSeries.record?.collected_at, endAt: dexSeries.record?.collected_at, details: { exact_address_pair_count: dexSeries.pairs.length } });
+    ? unavailable("DexPaprika reported no token-wide liquidity.", ref(aggregateLiquidityObs))
+    : valid(rawLiquidity, ref(aggregateLiquidityObs), { startAt: aggregateLiquidityObs?.observed_at, endAt: aggregateLiquidityObs?.observed_at, details: { pool_count: poolCount } });
   const aggregateVolumeCalc = rawVolume === null
-    ? unavailable("No exact-address pair returned a numeric volume.h24 value.", [...ref(aggregateVolumeObs), ...dexRawRefs], dexRaw)
-    : valid(rawVolume, [...ref(aggregateVolumeObs), ...dexRawRefs], { rawRecords: dexRaw, startAt: dexSeries.record?.collected_at, endAt: dexSeries.record?.collected_at, details: { exact_address_pair_count: dexSeries.pairs.length } });
+    ? unavailable("DexPaprika reported no token-wide 24-hour volume.", ref(aggregateVolumeObs))
+    : valid(rawVolume, ref(aggregateVolumeObs), { startAt: aggregateVolumeObs?.observed_at, endAt: aggregateVolumeObs?.observed_at, details: { pool_count: poolCount } });
+  const primaryDetails = { primary_pair_address: primary?.pairAddress ?? null, primary_pair_dex: primary?.dexId ?? null };
   const primaryLiquidityCalc = primaryLiquidity === null
-    ? unavailable("Primary pair liquidity is unavailable.", dexRawRefs, dexRaw)
-    : valid(primaryLiquidity, [...ref(metricSource(tokenRows, "dexscreener", "liquidity_usd")), ...dexRawRefs], { rawRecords: dexRaw, startAt: dexSeries.record?.collected_at, endAt: dexSeries.record?.collected_at, details: { primary_pair_address: dexSeries.primary?.pairAddress ?? null } });
+    ? unavailable("Primary pool liquidity is unavailable.", poolRef)
+    : valid(primaryLiquidity, poolRef, { startAt: poolList?.poolsAt, endAt: poolList?.poolsAt, details: primaryDetails });
   const primaryVolumeCalc = primaryVolume === null
-    ? unavailable("Primary pair 24-hour volume is unavailable.", dexRawRefs, dexRaw)
-    : valid(primaryVolume, dexRawRefs, { rawRecords: dexRaw, startAt: dexSeries.record?.collected_at, endAt: dexSeries.record?.collected_at, details: { primary_pair_address: dexSeries.primary?.pairAddress ?? null } });
+    ? unavailable("Primary pool 24-hour volume is unavailable.", poolRef)
+    : valid(primaryVolume, poolRef, { startAt: poolList?.poolsAt, endAt: poolList?.poolsAt, details: primaryDetails });
 
   const historicalGrowth = {
     price: growthCalculation(priceSeries, "CoinGecko price"),
@@ -530,15 +501,24 @@ export function calculateTokenMetrics(
   const crossSpread = { priceVsTvl: spread(priceVsTvl), priceVsRevenue: spread(priceVsRevenue), capVsTvl: spread(capVsTvl), capVsRevenue: spread(capVsRevenue) };
 
   const marketCapToTvl = ratio(cgMarketCap, llamaTvl, "CoinGecko market cap", "DeFiLlama protocol TVL");
-  const fdvToTvl = ratio(dexFdv, llamaTvl, "DEX Screener FDV", "DeFiLlama protocol TVL");
+  const fdvRatio = (denominator: ObservationInput | undefined, label: string): Calculation => {
+    const bottom = availableValue(denominator);
+    const sources = [...fdvRef, ...ref(denominator)];
+    if (!reportedFdv) return unavailable("Required input unavailable: CoinGecko fully diluted valuation.", sources);
+    if (bottom === null) return unavailable(`Required input unavailable: ${label}.`, sources);
+    if (reportedFdv.value < 0 || bottom < 0) return invalid("Negative values are not valid inputs for this valuation ratio.", sources);
+    if (bottom === 0) return unavailable(`Denominator is zero (${label}).`, sources);
+    return valid(reportedFdv.value / bottom, sources, { startAt: earlier(reportedFdv.collectedAt, denominator?.observed_at), endAt: later(reportedFdv.collectedAt, denominator?.observed_at) });
+  };
+  const fdvToTvl = fdvRatio(llamaTvl, "DeFiLlama protocol TVL");
   const marketCapToRevenue = ratio(cgMarketCap, llamaRevenue, "CoinGecko market cap", "DeFiLlama protocol 24-hour revenue");
-  const fdvToRevenue = ratio(dexFdv, llamaRevenue, "DEX Screener FDV", "DeFiLlama protocol 24-hour revenue");
+  const fdvToRevenue = fdvRatio(llamaRevenue, "DeFiLlama protocol 24-hour revenue");
   const volumeToMarketCap = ratio(cgVolume, cgMarketCap, "CoinGecko 24-hour volume", "CoinGecko market cap");
-  const dexVolumeToLiquidity = divideValues(rawVolume, rawLiquidity, dexRawRefs, dexRaw);
+  const dexVolumeToLiquidity = divideValues(rawVolume, rawLiquidity, [...ref(aggregateVolumeObs), ...ref(aggregateLiquidityObs)], []);
   const buySell = ratio(dexBuys, dexSells, "DEX buys", "DEX sells");
   const market = valueOf(cgMarketCap);
-  const primaryLiqToCap = divideValues(primaryLiquidity, market, [...dexRawRefs, ...ref(cgMarketCap)], dexRaw, 100);
-  const aggregateLiqToCap = divideValues(rawLiquidity, market, [...dexRawRefs, ...ref(cgMarketCap)], dexRaw, 100);
+  const primaryLiqToCap = divideValues(primaryLiquidity, market, [...poolRef, ...ref(cgMarketCap)], [], 100);
+  const aggregateLiqToCap = divideValues(rawLiquidity, market, [...ref(aggregateLiquidityObs), ...ref(cgMarketCap)], [], 100);
 
   const flag = (cross: CrossChange | Calculation, condition: (a: number, b: number) => boolean): Calculation => {
     if (!("a" in cross)) return cross;
@@ -588,6 +568,6 @@ export function calculateTokenMetrics(
   return CALCULATED_METRICS.map((definition) => buildCalculation(token, definition, calculations[definition.id] ?? unavailable("Metric calculation is not configured."), calculatedAt));
 }
 
-export function calculateAllMetrics(tokens: TokenInput[], observations: ObservationInput[], rawRecords: RawRecordInput[], calculatedAt = new Date().toISOString()): CalculatedMetricRow[] {
-  return tokens.flatMap((token) => calculateTokenMetrics(token, observations, rawRecords, calculatedAt));
+export function calculateAllMetrics(tokens: TokenInput[], observations: ObservationInput[], external: EngineExternalInputs, calculatedAt = new Date().toISOString()): CalculatedMetricRow[] {
+  return tokens.flatMap((token) => calculateTokenMetrics(token, observations, external, calculatedAt));
 }

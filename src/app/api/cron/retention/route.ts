@@ -20,7 +20,7 @@ function positiveNumber(value: string | undefined): number | null {
 
 /**
  * Scheduled data-retention pass. Requires `Authorization: Bearer <CRON_SECRET>`, the
- * same convention as /api/cron/refresh and /api/cron/geckoterminal. Deletes/downsamples
+ * same convention as /api/cron/refresh. Deletes/downsamples
  * token_metric_observations and raw_provider_records per the windows documented in
  * the current Supabase retention migrations — without this route
  * running regularly, token_metric_observations alone regrows past the Supabase Free

@@ -29,7 +29,7 @@ function fixFor(problem: string, unmappedWording: Record<string, string>): strin
   if (/do not match any value in the cited sources/.test(problem)) return "Remove the unsupported number(s); do not replace them with other numbers.";
   if (/is not a period established by the cited sources|names a period/.test(problem)) return "Remove the unsupported period wording; do not substitute another period.";
   if (/has no period/.test(problem)) return "Cite only the fields this text actually restates.";
-  const unmapped = problem.match(/refers to (DeFiLlama|DEX Screener) data|explains unavailable (DeFiLlama|DEX Screener) data/);
+  const unmapped = problem.match(/refers to (DeFiLlama|DexPaprika) data|explains unavailable (DeFiLlama|DexPaprika) data/);
   if (unmapped) {
     const provider = unmapped[1] ?? unmapped[2];
     return `Do not present ${provider} data as available. Either remove the ${provider} reference, or state in this same text: "${unmappedWording[provider]}", and cite that provider's scope note.`;
@@ -93,7 +93,7 @@ export function buildCorrectionUserContent(payload: ProfilePayload, report: unkn
 /** Exact unmapped-provider wording prescribed by the system instruction (kept in one place). */
 export function unmappedWordingFrom(systemInstruction: string): Record<string, string> {
   const wording: Record<string, string> = {};
-  for (const provider of ["DeFiLlama", "DEX Screener"]) {
+  for (const provider of ["DeFiLlama", "DexPaprika"]) {
     const match = systemInstruction.match(new RegExp(`- ${provider}: "([^"]+)"`));
     if (match) wording[provider] = match[1];
   }

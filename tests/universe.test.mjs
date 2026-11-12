@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { canonicalTokens, additionalCanonicalTokens, phase15CanonicalTokens, phase16CanonicalTokens } from "../src/data/canonical-tokens.ts";
 import { coingeckoTokenIds, nativeTokenIds } from "../src/data/coingecko-token-mappings.ts";
 import { defillamaProtocolMappings } from "../src/data/defillama-protocol-mappings.ts";
-import { dexScreenerTokenMappings } from "../src/data/dexscreener-token-mappings.ts";
-import { configuredDexScreenerAssets } from "../src/lib/providers/dexscreener.ts";
+import { onchainTokenMappings } from "../src/data/onchain-token-mappings.ts";
+import { dexPoolAssets } from "../src/data/onchain-identity.ts";
+import { dexPaprikaNetwork } from "../src/lib/providers/dexpaprika-pools.ts";
 import { persistProviderSnapshots } from "../src/lib/providers/persist-snapshots.ts";
 
 const cases = [];
@@ -44,16 +45,16 @@ test("provider mappings are unique, explicit, chain-consistent, and leave unsupp
   const coinIds = canonicalTokens.map((token) => coingeckoTokenIds[token.id]);
   assert.equal(coinIds.filter(Boolean).length, 238);
   assert.equal(new Set(coinIds).size, 238);
-  assert.equal(new Set(dexScreenerTokenMappings.map((mapping) => mapping.tokenId)).size, 238);
-  const dexAssetsByToken = new Map(configuredDexScreenerAssets().map((asset) => [asset.tokenId, asset]));
-  for (const mapping of dexScreenerTokenMappings) {
+  assert.equal(new Set(onchainTokenMappings.map((mapping) => mapping.tokenId)).size, 238);
+  const dexAssetsByToken = new Map(dexPoolAssets.map((asset) => [asset.tokenId, asset]));
+  for (const mapping of onchainTokenMappings) {
     assert.ok(ids.has(mapping.tokenId));
     if (mapping.tokenAddress) {
       assert.ok(mapping.dexChainId);
-      assert.equal(
-        dexAssetsByToken.get(mapping.tokenId)?.externalAssetId,
-        `${mapping.dexChainId}:${mapping.tokenAddress}`,
-      );
+      // A network DexPaprika does not index (e.g. ICP) stays unqueried; every other mapping is queried by its exact address.
+      const asset = dexAssetsByToken.get(mapping.tokenId);
+      if (dexPaprikaNetwork(mapping.dexChainId)) assert.equal(asset?.tokenAddress, mapping.tokenAddress);
+      else assert.equal(asset, undefined);
     } else {
       assert.ok(mapping.unmappedReason);
     }
@@ -71,8 +72,8 @@ test("Phase 16 (100 -> 238) tokens all carry a verified CoinGecko ID and no fabr
     assert.equal(token.isNative, nativeTokenIds.has(token.id));
   }
   const phase16Ids = new Set(phase16CanonicalTokens.map((token) => token.id));
-  for (const mapping of dexScreenerTokenMappings.filter((entry) => phase16Ids.has(entry.tokenId))) {
-    assert.equal(mapping.tokenAddress, null, `${mapping.tokenId}: no DEX Screener address is invented in this phase`);
+  for (const mapping of onchainTokenMappings.filter((entry) => phase16Ids.has(entry.tokenId))) {
+    assert.equal(mapping.tokenAddress, null, `${mapping.tokenId}: no DexPaprika address is invented in this phase`);
     assert.ok(mapping.unmappedReason, `${mapping.tokenId} explains why it is unmapped`);
   }
   assert.equal(new Set(phase16CanonicalTokens.map((token) => coingeckoTokenIds[token.id])).size, phase16CanonicalTokens.length, "no duplicate CoinGecko IDs among the new tokens");

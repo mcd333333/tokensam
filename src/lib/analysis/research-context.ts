@@ -3,9 +3,10 @@ import { createHash } from "node:crypto";
 import { canonicalTokens } from "../../data/canonical-tokens.ts";
 import { coingeckoTokenIds } from "../../data/coingecko-token-mappings.ts";
 import { defillamaProtocolMappings } from "../../data/defillama-protocol-mappings.ts";
-import { dexScreenerTokenMappings } from "../../data/dexscreener-token-mappings.ts";
+import { onchainTokenMappings } from "../../data/onchain-token-mappings.ts";
+import { onchainIdentityFor } from "../../data/onchain-identity.ts";
 import { readLatestObservations, readObservationWindow } from "../data/observation-reads.ts";
-import { PROVIDER_STEPS, REFRESH_POLICY, type ProviderStep, type RefreshStep } from "../refresh/config.ts";
+import { FRESHNESS_PROVIDERS, REFRESH_POLICY, type FreshnessProvider, type RefreshStep } from "../refresh/config.ts";
 import { SupabaseRefreshStore, type StepStatus } from "../refresh/store.ts";
 import { calculatedMetricPeriod, formatDuration, observationWindow, type MetricPeriod, type ObservationWindow } from "./metric-periods.ts";
 import { periodCoverage } from "../data/historical-series.ts";
@@ -17,13 +18,13 @@ type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createS
 export const CONTEXT_VERSION = "3";
 
 export type EvidenceScope = "token" | "protocol" | "chain" | "market";
-const PROVIDER_SCOPE: Record<string, EvidenceScope> = { coingecko: "token", binance: "market", defillama_coins: "token", defillama: "protocol", dexscreener: "market" };
+const PROVIDER_SCOPE: Record<string, EvidenceScope> = { coingecko: "token", binance: "market", defillama_coins: "token", defillama: "protocol", dexpaprika: "market" };
 /** Requested windows reported to the model (all fit inside CONTEXT_HISTORY_DAYS). */
 const CONTEXT_COVERAGE_PERIODS = ["24H", "7D", "14D"] as const;
 /** History supplied to the model: one point per UTC day for this many days. */
 export const CONTEXT_HISTORY_DAYS = 30;
 const HOUR_MS = 60 * 60 * 1000;
-const PROVIDER_LABEL: Record<ProviderStep, string> = { coingecko: "CoinGecko", defillama: "DeFiLlama", dexscreener: "DEX Screener", defillama_coins: "DeFiLlama (token prices)" };
+const PROVIDER_LABEL: Record<FreshnessProvider, string> = { coingecko: "CoinGecko", defillama: "DeFiLlama", dexpaprika: "DexPaprika", defillama_coins: "DeFiLlama (token prices)" };
 const HISTORY_SERIES = [
   { providerId: "coingecko", metricId: "price_usd" },
   { providerId: "coingecko", metricId: "market_cap_usd" },
@@ -191,7 +192,8 @@ export function isCanonicalTokenId(tokenId: unknown): tokenId is string {
 function scopeStatements(tokenId: string): ResearchContext["scope"] {
   const coingeckoId = coingeckoTokenIds[tokenId];
   const llama = defillamaProtocolMappings.find((mapping) => mapping.tokenId === tokenId);
-  const dex = dexScreenerTokenMappings.find((mapping) => mapping.tokenId === tokenId);
+  const dexUnmapped = onchainTokenMappings.find((mapping) => mapping.tokenId === tokenId);
+  const dex = onchainIdentityFor(tokenId);
   return [
     {
       id: "scope:coingecko", provider: "CoinGecko", mapped: Boolean(coingeckoId),
@@ -210,10 +212,10 @@ function scopeStatements(tokenId: string): ResearchContext["scope"] {
       statement: "TOKEN-LEVEL price for this exact token from DeFiLlama's coins API, keyed by a documented identifier (chain:address for contracts, coingecko:<id> otherwise; the latter may be sourced from CoinGecko). It is separate from DeFiLlama protocol data.",
     },
     {
-      id: "scope:dexscreener", provider: "DEX Screener", mapped: Boolean(dex?.tokenAddress),
-      statement: dex?.tokenAddress
-        ? `DEX-only data from pairs matching the exact token address on ${dex.dexChainId}. It excludes centralized exchanges and other chains, so it is not the token's whole market.`
-        : `No verified DEX Screener address mapping${dex?.unmappedReason ? ` (${cleanText(dex.unmappedReason, 200)})` : ""}; DEX metrics are unavailable by design.`,
+      id: "scope:dexpaprika", provider: "DexPaprika", mapped: Boolean(dex),
+      statement: dex
+        ? `DEX-only data from all of the token's pools matching the exact token address on ${dex.network}. It excludes centralized exchanges and other chains, so it is not the token's whole market.`
+        : `No verified DexPaprika address mapping${dexUnmapped?.unmappedReason ? ` (${cleanText(dexUnmapped.unmappedReason, 200)})` : ""}; DEX metrics are unavailable by design.`,
     },
   ];
 }
@@ -221,7 +223,7 @@ function scopeStatements(tokenId: string): ResearchContext["scope"] {
 function scopeFor(provider: string): string {
   if (provider === "defillama") return "protocol-level (see scope:defillama)";
   if (provider === "defillama_coins") return "token-level DeFiLlama coins-API price (see scope:defillama_coins)";
-  if (provider === "dexscreener") return "DEX pairs for the exact token address only (see scope:dexscreener)";
+  if (provider === "dexpaprika") return "DEX pools for the exact token address only (see scope:dexpaprika)";
   return "token-level, CoinGecko aggregate (see scope:coingecko)";
 }
 
@@ -235,7 +237,7 @@ function dailySample(rows: ContextObservationRow[]): ContextObservationRow[] {
 }
 
 function freshness(input: ContextInput): ContextFreshness[] {
-  return PROVIDER_STEPS.map((provider) => {
+  return FRESHNESS_PROVIDERS.map((provider) => {
     const policy = REFRESH_POLICY[provider];
     const label = PROVIDER_LABEL[provider];
     const collected = input.latestObservations
@@ -243,8 +245,8 @@ function freshness(input: ContextInput): ContextFreshness[] {
       .map((row) => iso(row.collected_at)).sort().at(-1) ?? null;
     const ageHours = collected ? (input.now.getTime() - Date.parse(collected)) / HOUR_MS : null;
     const state: ContextFreshness["state"] = ageHours === null ? "unavailable" : ageHours * HOUR_MS > policy.staleAfterMs ? "stale" : "current";
-    const attempt = input.latestAttempts[provider] ?? null;
-    const lastSuccess = input.lastSuccess[provider] ?? null;
+    const attempt = input.latestAttempts[provider as RefreshStep] ?? null;
+    const lastSuccess = input.lastSuccess[provider as RefreshStep] ?? null;
     const attemptFailed = attempt && attempt.status !== "succeeded" && attempt.status !== "skipped"
       && (!lastSuccess || Date.parse(attempt.finishedAt) > Date.parse(lastSuccess));
 
@@ -282,7 +284,7 @@ export function buildResearchContext(input: ContextInput): ResearchContext {
       const value = row.status === "available" ? numeric(row.value) : null;
       return {
         id: `obs:${row.id}`,
-        provider: PROVIDER_LABEL[row.provider_id as ProviderStep] ?? row.provider_id,
+        provider: PROVIDER_LABEL[row.provider_id as FreshnessProvider] ?? row.provider_id,
         scope: ((row.scope as EvidenceScope | null | undefined) ?? PROVIDER_SCOPE[row.provider_id] ?? "token"),
         scopeNote: scopeFor(row.provider_id),
         metric: row.metric_id,
@@ -343,7 +345,7 @@ export function buildResearchContext(input: ContextInput): ResearchContext {
     const changePct = first && last && points.length >= 2 && first.value > 0 ? Math.round(((last.value / first.value) - 1) * 10000) / 100 : null;
     return {
       id: `hist:${providerId}:${metricId}`,
-      provider: PROVIDER_LABEL[providerId as ProviderStep],
+      provider: PROVIDER_LABEL[providerId as FreshnessProvider],
       scope: PROVIDER_SCOPE[providerId] ?? "token",
       scopeNote: scopeFor(providerId),
       metric: metricId,

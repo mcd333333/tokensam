@@ -14,7 +14,7 @@
   "durable_objects": { "bindings": [{ "name": "PRICE_STREAM", "class_name": "PriceStream" }] },
   "migrations": [{ "tag": "v1-price-stream", "new_sqlite_classes": ["PriceStream"] }],
   "images": { "binding": "IMAGES" },
-  // Fires every 5 minutes: refresh, GeckoTerminal slices and the daily exchange volumes.
+  // Fires every 5 minutes: refresh, DexPaprika slices and the daily exchange volumes.
   "triggers": { "crons": ["*/5 * * * *"] },
   // Keep variables added in the dashboard (Supabase, AI keys, ...) across deploys.
   "keep_vars": true,

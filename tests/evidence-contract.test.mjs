@@ -39,7 +39,7 @@ function validBitcoin() {
     ] },
     marketFundamentalRelationships: { overview: "No price-to-fundamentals relationship can be assessed for this token.", statements: [] },
     liquidityMarketStructure: { overview: "DEX market structure is unavailable by design for this token.", statements: [
-      st("uncertainty", "No verified DEX Screener address mapping exists for Bitcoin, so DEX metrics are unavailable by design.", ["scope:dexscreener"]),
+      st("uncertainty", "No verified DexPaprika address mapping exists for Bitcoin, so DEX metrics are unavailable by design.", ["scope:dexpaprika"]),
     ] },
     tokenomics: { overview: "Supply figures come from CoinGecko.", statements: [
       st("observed", `CoinGecko reported a circulating supply of about ${obs("circulating_supply").value.toLocaleString("en-US")} BTC and a maximum supply of ${obs("maximum_supply").value.toLocaleString("en-US")} BTC.`, [obs("circulating_supply").id, obs("maximum_supply").id]),
@@ -184,7 +184,7 @@ test("6. a data gap about DeFiLlama fails only when it makes an ungrounded factu
 
 test("6b. the unmapped-provider reason may be stated anywhere in a risk or question pair", () => {
   const output = validBitcoin();
-  output.risks[0] = { title: "DEX liquidity unavailable", basis: "data_limitation", detail: "No verified DEX Screener address is configured for Bitcoin, so DEX metrics are unavailable by design.", sourceIds: ["scope:dexscreener"] };
+  output.risks[0] = { title: "DEX liquidity unavailable", basis: "data_limitation", detail: "No verified DexPaprika address is configured for Bitcoin, so DEX metrics are unavailable by design.", sourceIds: ["scope:dexpaprika"] };
   assert.deepEqual(violations(output), []);
 });
 

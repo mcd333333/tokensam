@@ -27,10 +27,10 @@
    "statement": "No curated DeFiLlama protocol mapping exists for this token, so TVL, fees, and revenue are unavailable by design. This is a coverage limitation, not evidence of zero protocol activity."
   },
   {
-   "id": "scope:dexscreener",
-   "provider": "DEX Screener",
+   "id": "scope:dexpaprika",
+   "provider": "DexPaprika",
    "mapped": false,
-   "statement": "No verified DEX Screener address mapping (No canonical Bitcoin-chain DEX Screener token address is configured; bridged BTC wrappers are distinct assets.); DEX metrics are unavailable by design."
+   "statement": "No verified DexPaprika address mapping (No canonical Bitcoin-chain DexPaprika token address is configured; bridged BTC wrappers are distinct assets.); DEX metrics are unavailable by design."
   }
  ],
  "providerFreshness": [
@@ -50,7 +50,7 @@
   },
   {
    "id": "fresh:dexscreener",
-   "provider": "DEX Screener",
+   "provider": "DexPaprika",
    "state": "unavailable",
    "tokenDataCollectedAt": null,
    "tokenDataAge": null,
@@ -60,7 +60,7 @@
     "status": "succeeded",
     "finishedAt": "2026-09-24T17:02:55.529Z"
    },
-   "note": "No DEX Screener observations are stored for this token."
+   "note": "No DexPaprika observations are stored for this token."
   },
   {
    "id": "fresh:defillama",
@@ -307,7 +307,7 @@
     "endAt": null,
     "durationHours": null,
     "providerWindows": [
-     "Uses DEX Screener's rolling 24-hour buy/sell transaction counts."
+     "Uses DexPaprika's rolling 24-hour buy/sell transaction counts."
     ],
     "label": "Point-in-time value from the latest stored inputs; input observation times were not recorded for this metric."
    },
@@ -538,7 +538,7 @@
    "unit": "ratio",
    "value": null,
    "status": "unavailable",
-   "formula": "DEX Screener primary-pair fdv_usd / DeFiLlama revenue_24h_usd",
+   "formula": "DexPaprika primary-pair fdv_usd / DeFiLlama revenue_24h_usd",
    "calculatedAt": "2026-09-24T17:03:31.689Z",
    "period": {
     "kind": "point_in_time",
@@ -550,7 +550,7 @@
     ],
     "label": "Point-in-time value from the latest stored inputs; input observation times were not recorded for this metric."
    },
-   "unavailableReason": "Required input unavailable: DEX Screener FDV.",
+   "unavailableReason": "Required input unavailable: DexPaprika FDV.",
    "sourceObservationIds": []
   },
   {
@@ -561,7 +561,7 @@
    "unit": "ratio",
    "value": null,
    "status": "unavailable",
-   "formula": "DEX Screener primary-pair fdv_usd / DeFiLlama protocol tvl_usd",
+   "formula": "DexPaprika primary-pair fdv_usd / DeFiLlama protocol tvl_usd",
    "calculatedAt": "2026-09-24T17:03:31.689Z",
    "period": {
     "kind": "point_in_time",
@@ -571,7 +571,7 @@
     "providerWindows": [],
     "label": "Point-in-time value from the latest stored inputs; input observation times were not recorded for this metric."
    },
-   "unavailableReason": "Required input unavailable: DEX Screener FDV.",
+   "unavailableReason": "Required input unavailable: DexPaprika FDV.",
    "sourceObservationIds": []
   },
   {
@@ -1775,12 +1775,12 @@
   {
    "sourceId": "calc:116",
    "item": "Calculated: FDV / 24h protocol revenue",
-   "reason": "Required input unavailable: DEX Screener FDV."
+   "reason": "Required input unavailable: DexPaprika FDV."
   },
   {
    "sourceId": "calc:114",
    "item": "Calculated: FDV / TVL",
-   "reason": "Required input unavailable: DEX Screener FDV."
+   "reason": "Required input unavailable: DexPaprika FDV."
   },
   {
    "sourceId": "calc:120",

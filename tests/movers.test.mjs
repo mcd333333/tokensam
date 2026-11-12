@@ -58,7 +58,7 @@ test("4. only the stored CoinGecko 24h price change is used (never 7d, market-ca
     id, token_id: token.id, chain_id: "solana", metric_id, provider_id, value, status,
     observed_at: "2026-09-25T00:00:00.000Z", collected_at: "2026-09-25T00:00:00.000Z", source_field: metric_id, note: null,
   });
-  const only7d = buildDashboardTokens([token], [], [row(1, "price_change_7d_pct", "coingecko", 40), row(2, "price_change_24h_pct", "dexscreener", 30)]);
+  const only7d = buildDashboardTokens([token], [], [row(1, "price_change_7d_pct", "coingecko", 40), row(2, "price_change_24h_pct", "dexpaprika", 30)]);
   assert.deepEqual(selectMovers(only7d), { gainers: [], losers: [], active: [], inactive: [] });
   const unavailable = buildDashboardTokens([token], [], [row(3, "price_change_24h_pct", "coingecko", 12, "unavailable")]);
   assert.deepEqual(selectMovers(unavailable), { gainers: [], losers: [], active: [], inactive: [] });

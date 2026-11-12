@@ -2,7 +2,8 @@ import { canonicalTokens, type CanonicalTokenDefinition } from "./canonical-toke
 import { coinbaseProducts } from "./coinbase-token-mappings.ts";
 import { coingeckoTokenIds } from "./coingecko-token-mappings.ts";
 import { defillamaProtocolMappings } from "./defillama-protocol-mappings.ts";
-import { dexScreenerTokenMappings } from "./dexscreener-token-mappings.ts";
+import { onchainTokenMappings } from "./onchain-token-mappings.ts";
+import { onchainIdentityFor } from "./onchain-identity.ts";
 
 /**
  * Provider identity and coverage for every canonical token.
@@ -12,7 +13,7 @@ import { dexScreenerTokenMappings } from "./dexscreener-token-mappings.ts";
  * carries an explicit reason so the UI and AI can say *why* data is absent.
  */
 
-export type CoverageProvider = "coingecko" | "binance" | "defillama_coins" | "defillama" | "dexscreener";
+export type CoverageProvider = "coingecko" | "binance" | "defillama_coins" | "defillama" | "dexpaprika";
 export type CoverageScope = "token" | "protocol" | "market";
 export type CoverageReason =
   | "provider_does_not_support_token"
@@ -49,7 +50,7 @@ export const PROVIDER_LABELS: Record<CoverageProvider, string> = {
   binance: "Coinbase",
   defillama_coins: "DeFiLlama (token prices)",
   defillama: "DeFiLlama (protocol)",
-  dexscreener: "DEX Screener",
+  dexpaprika: "DexPaprika",
 };
 
 /** DeFiLlama coins-API chain slugs for canonical chains that carry contract tokens. */
@@ -68,7 +69,7 @@ export function defillamaCoinsIdentifier(token: CanonicalTokenDefinition): strin
   return coingeckoId ? `coingecko:${coingeckoId}` : null;
 }
 
-/** Explicit DEX Screener gap classification (from the reviewed unmapped reasons, not inferred). */
+/** Explicit on-chain data gap classification (from the reviewed unmapped reasons, not inferred). */
 const DEX_GAP: Record<string, CoverageReason> = {
   "ethereum-eth": "wrapped_representation_only",
   "solana-sol": "wrapped_representation_only",
@@ -93,7 +94,7 @@ export function tokenCoverage(token: CanonicalTokenDefinition): ProviderCoverage
   const coingeckoId = coingeckoTokenIds[token.id] ?? null;
   const llamaKey = defillamaCoinsIdentifier(token);
   const protocol = defillamaProtocolMappings.find((mapping) => mapping.tokenId === token.id);
-  const dex = dexScreenerTokenMappings.find((mapping) => mapping.tokenId === token.id);
+  const dex = onchainTokenMappings.find((mapping) => mapping.tokenId === token.id);
 
   const coingecko: ProviderCoverage = coingeckoId
     ? {
@@ -151,22 +152,23 @@ export function tokenCoverage(token: CanonicalTokenDefinition): ProviderCoverage
         : "No curated DeFiLlama protocol association exists for this token; protocol data is never inferred from a ticker.",
     };
 
-  const dexscreener: ProviderCoverage = dex?.tokenAddress && dex.dexChainId
+  const onchain = onchainIdentityFor(token.id);
+  const dexpaprika: ProviderCoverage = onchain
     ? {
-      provider: "dexscreener", label: PROVIDER_LABELS.dexscreener, scope: "market", status: "mapped", identifier: `${dex.dexChainId}:${dex.tokenAddress}`,
+      provider: "dexpaprika", label: PROVIDER_LABELS.dexpaprika, scope: "market", status: "mapped", identifier: `${onchain.network}:${onchain.tokenAddress}`,
       mappingClass: token.isNative ? "B_verified_discovery" : "A_deterministic",
-      verification: dex.mappingEvidence ?? "Canonical contract address matches CoinGecko's platform address; queried by exact chain and address.",
-      reason: null, detail: "DEX pair/market data for the exact token address (not the whole market).",
+      verification: dex?.mappingEvidence ?? "Canonical contract address matches CoinGecko's platform address; queried by exact network and address.",
+      reason: null, detail: "DEX market data for the exact token address across all of its pools (not the whole market).",
     }
     : {
-      provider: "dexscreener", label: PROVIDER_LABELS.dexscreener, scope: "market", status: "unavailable", identifier: null,
+      provider: "dexpaprika", label: PROVIDER_LABELS.dexpaprika, scope: "market", status: "unavailable", identifier: null,
       mappingClass: DEX_GAP[token.id] === "wrapped_representation_only" ? "D_not_supported" : "B_verified_discovery",
       verification: null,
       reason: DEX_GAP[token.id] ?? (token.isNative ? "native_asset_lacks_provider_identifier" : "contract_address_unavailable"),
-      detail: dex?.unmappedReason ?? "No verified DEX Screener address mapping exists.",
+      detail: dex?.unmappedReason ?? "No verified on-chain address mapping exists for DexPaprika.",
     };
 
-  return [coingecko, binance, defillamaCoins, defillamaProtocol, dexscreener];
+  return [coingecko, binance, defillamaCoins, defillamaProtocol, dexpaprika];
 }
 
 export function coverageMatrix(): { tokenId: string; symbol: string; isNative: boolean; coverage: ProviderCoverage[] }[] {

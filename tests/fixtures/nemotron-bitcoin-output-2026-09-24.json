@@ -31,9 +31,9 @@
   {
    "title": "DEX‑liquidity and volume unavailability",
    "basis": "data_limitation",
-   "detail": "No exact‑address Bitcoin‑chain DEX Screener pair is configured, so aggregate DEX liquidity, volume, and related ratios are unavailable.",
+   "detail": "No exact‑address Bitcoin‑chain DexPaprika pair is configured, so aggregate DEX liquidity, volume, and related ratios are unavailable.",
    "sourceIds": [
-    "scope:dexscreener",
+    "scope:dexpaprika",
     "calc:128",
     "calc:127",
     "calc:134"
@@ -88,9 +88,9 @@
  "furtherResearchQuestions": [
   {
    "question": "Is there any DEX liquidity data for wrapped Bitcoin (e.g., WBTC) on Ethereum or other chains that could serve as a proxy for Bitcoin’s on‑chain activity?",
-   "rationale": "The context notes that no canonical Bitcoin‑chain DEX Screener address is configured, but wrapped versions may be tracked elsewhere.",
+   "rationale": "The context notes that no canonical Bitcoin‑chain DexPaprika address is configured, but wrapped versions may be tracked elsewhere.",
    "sourceIds": [
-    "scope:dexscreener"
+    "scope:dexpaprika"
    ]
   },
   {

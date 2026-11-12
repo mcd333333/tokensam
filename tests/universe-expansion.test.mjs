@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { canonicalTokens, phase15CanonicalTokens } from "../src/data/canonical-tokens.ts";
 import { coingeckoTokenIds, nativeTokenIds } from "../src/data/coingecko-token-mappings.ts";
 import { defillamaProtocolMappings } from "../src/data/defillama-protocol-mappings.ts";
-import { dexScreenerTokenMappings } from "../src/data/dexscreener-token-mappings.ts";
+import { onchainTokenMappings } from "../src/data/onchain-token-mappings.ts";
 import { tokenCoverage } from "../src/data/provider-coverage.ts";
 import { normalizeCoinGeckoMarketItem } from "../src/lib/providers/coingecko.ts";
-import { addressEquals, configuredDexScreenerAssets, normalizeDexScreenerToken } from "../src/lib/providers/dexscreener.ts";
+import { dexPoolAssets } from "../src/data/onchain-identity.ts";
 import { calculateTokenMetrics } from "../src/lib/metrics/engine.ts";
 import { logosFromRecords, validatedLogoUrl } from "../src/lib/data/token-logos.ts";
 
@@ -15,7 +15,7 @@ function test(name, run) { cases.push({ name, run }); }
 
 const NOW = "2026-09-25T12:00:00.000Z";
 const byId = (id) => canonicalTokens.find((token) => token.id === id);
-const dexAsset = (id) => configuredDexScreenerAssets().find((asset) => asset.tokenId === id);
+const dexAsset = (id) => dexPoolAssets.find((asset) => asset.tokenId === id);
 const protocolFor = (id) => defillamaProtocolMappings.find((mapping) => mapping.tokenId === id);
 // Wrapped/proxy representations that must never stand in for a native asset.
 const WRAPPED = new Set([
@@ -63,15 +63,15 @@ test("2. universe diversity: 106 chains and 23 categories, with no chain holding
 // ---- Native / wrapped separation ----
 
 test("3. natives map to DEX data only through their own-chain identifier; no wrapped representation is used anywhere", () => {
-  for (const mapping of dexScreenerTokenMappings) {
+  for (const mapping of onchainTokenMappings) {
     if (mapping.tokenAddress) assert.ok(!WRAPPED.has(mapping.tokenAddress.toLowerCase()) || mapping.tokenId === "ethereum-wbtc", `${mapping.tokenId} does not use a wrapped proxy`);
   }
   const mappedNatives = phase15CanonicalTokens.filter((token) => token.isNative && dexAsset(token.id)).map((token) => token.id).sort();
   assert.deepEqual(mappedNatives, ["hyperliquid-hype", "ton-gram"]);
   for (const token of phase15CanonicalTokens.filter((candidate) => candidate.isNative && !dexAsset(candidate.id))) {
-    const coverage = tokenCoverage(token).find((item) => item.provider === "dexscreener");
+    const coverage = tokenCoverage(token).find((item) => item.provider === "dexpaprika");
     assert.equal(coverage.status, "unavailable");
-    assert.match(coverage.detail, /(not|no representation is) substituted|DEX Screener does not cover/, `${token.id} explains the gap without a proxy`);
+    assert.match(coverage.detail, /(not|no representation is) substituted|DexPaprika does not cover/, `${token.id} explains the gap without a proxy`);
   }
 });
 
@@ -99,45 +99,8 @@ test("4. new protocol mappings are protocol-scoped, pinned to a verified record,
     const scopes = Object.fromEntries(tokenCoverage(token).map((item) => [item.provider, item.scope]));
     // Binance is market-scoped: it reports one venue's traded price, not a token-scoped
     // aggregate like CoinGecko's, so it must never be read as a token-scope figure.
-    assert.deepEqual(scopes, { coingecko: "token", binance: "market", defillama_coins: "token", defillama: "protocol", dexscreener: "market" }, token.id);
+    assert.deepEqual(scopes, { coingecko: "token", binance: "market", defillama_coins: "token", defillama: "protocol", dexpaprika: "market" }, token.id);
   }
-});
-
-// ---- DEX exact-address matching ----
-
-test("5. ZKsync addresses match case-insensitively like other EVM chains; TON and HyperCore IDs match exactly", () => {
-  assert.equal(addressEquals("zksync", "0x5A7d6b2F92C77FAD6CCaBd7EE0624E64907Eaf3E", "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e"), true);
-  assert.equal(addressEquals("bsc", "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82", "0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82"), true);
-  assert.equal(addressEquals("ton", "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c", "eqaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaam9c"), false);
-  const zk = { id: "zksync-zk", chain_id: "zksync", name: "ZKsync", symbol: "ZK" };
-  const raw = { id: 1, provider_id: "dexscreener", token_id: "zksync-zk", chain_id: "zksync", collected_at: NOW, endpoint_label: "GET /tokens/v1", payload: {
-    requestedChainId: "zksync", requestedTokenAddress: "0x5a7d6b2f92c77fad6ccabd7ee0624e64907eaf3e",
-    providerPairs: [{ chainId: "zksync", pairAddress: "0xpair", baseToken: { address: "0x5A7d6b2F92C77FAD6CCaBd7EE0624E64907Eaf3E" }, quoteToken: { address: "0xquote" }, liquidity: { usd: 358_294 }, volume: { h24: 10 }, txns: { h24: { buys: 1, sells: 1 } } }],
-  } };
-  const liquidity = calculateTokenMetrics(zk, [], [raw], NOW).find((row) => row.metric_id === "dex_aggregate_liquidity_usd");
-  assert.equal(liquidity.status, "available");
-  assert.equal(liquidity.value, 358_294);
-});
-
-test("6. quote-only TON presence yields no DEX price, and HyperCore's missing pool liquidity stays unavailable (never zero)", () => {
-  const ton = normalizeDexScreenerToken(dexAsset("ton-gram"), [{
-    chainId: "ton", dexId: "stonfi", pairAddress: "EQpair", baseToken: { address: "EQjetton", symbol: "UTYA" },
-    quoteToken: { address: "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c", symbol: "GRAM" }, priceUsd: "0.01", liquidity: { usd: 549_395 }, volume: { h24: 82_837 },
-  }], NOW);
-  const tonValue = (metricId) => ton.observations.find((row) => row.metricId === metricId);
-  assert.equal(tonValue("price_usd").status, "unavailable", "a quote-side pair is not token-price coverage; prices are not inverted");
-  assert.equal(tonValue("price_usd").value, null);
-  assert.equal(tonValue("fdv_usd").status, "unavailable");
-  const hype = normalizeDexScreenerToken(dexAsset("hyperliquid-hype"), [{
-    chainId: "hyperliquid", dexId: "hyperliquid", pairAddress: "0x13ba5fea7078ab3798fbce53b4d0721c",
-    baseToken: { address: "0x0d01dc56dcaaca66ad901c959b4011ec", symbol: "HYPE" }, quoteToken: { address: "0xusdc", symbol: "USDC" },
-    priceUsd: "91.33", volume: { h24: 104_093_494 }, txns: { h24: { buys: 36_458, sells: 69_319 } },
-  }], NOW);
-  const hypeValue = (metricId) => hype.observations.find((row) => row.metricId === metricId);
-  assert.equal(hypeValue("price_usd").value, 91.33);
-  assert.equal(hypeValue("liquidity_usd").status, "unavailable");
-  assert.equal(hypeValue("liquidity_usd").value, null, "an order book without pool liquidity is not a zero-liquidity market");
-  assert.equal(hypeValue("transactions_24h_count").value, 105_777);
 });
 
 // ---- CoinGecko and logos ----

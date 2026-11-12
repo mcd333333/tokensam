@@ -1,6 +1,4 @@
-import { canonicalTokens } from "../../data/canonical-tokens.ts";
-import { dexScreenerTokenMappings } from "../../data/dexscreener-token-mappings.ts";
-import { extraOnchainMappings } from "../../data/dexpaprika-extra-mappings.ts";
+import { dexPoolAssets, onchainIdentityFor } from "../../data/onchain-identity.ts";
 import { DEXPAPRIKA_PROVIDER_ID, buildDexPaprikaSnapshot, fetchTokenStats, type DexPaprikaAsset } from "./dexpaprika.ts";
 import {
   DEX_POOL_RATE_LIMIT_COOLDOWN_MS, DEX_POOL_REQUEST_INTERVAL_MS, DexPoolApiError, dexPaprikaAddress, dexPaprikaNetwork, fetchDexPools,
@@ -34,32 +32,7 @@ export type DexPaprikaCollectionResult = {
   firstError?: string;
 };
 
-const canonicalIds = new Set(canonicalTokens.map((token) => token.id));
-
-/**
- * Tokens with an exact chain/address identity on a network DexPaprika indexes: the curated DEX Screener-era mapping
- * (which is also this project's on-chain identity) plus the extra DexPaprika-verified ones. Limited to the canonical
- * universe, because the mapping file also holds retired tokens that have no row in `tokens` to attach to.
- */
-export const dexPoolAssets = [
-  ...dexScreenerTokenMappings
-    .filter((mapping) => mapping.dexChainId && mapping.tokenAddress && canonicalIds.has(mapping.tokenId) && dexPaprikaNetwork(mapping.dexChainId))
-    .map((mapping) => ({
-      tokenId: mapping.tokenId,
-      chainId: mapping.canonicalChainId,
-      network: dexPaprikaNetwork(mapping.dexChainId as string) as string,
-      tokenAddress: mapping.tokenAddress as string,
-    })),
-  ...extraOnchainMappings
-    .filter((mapping) => canonicalIds.has(mapping.tokenId))
-    .map((mapping) => ({ tokenId: mapping.tokenId, chainId: mapping.canonicalChainId, network: mapping.network, tokenAddress: mapping.tokenAddress })),
-];
-
-/** On-chain identity (canonical chain + exact token address) for a token that has DEX data, or undefined. */
-export function onchainIdentityFor(tokenId: string): { chainId: string; tokenAddress: string } | undefined {
-  const asset = dexPoolAssets.find((candidate) => candidate.tokenId === tokenId);
-  return asset ? { chainId: asset.chainId, tokenAddress: asset.tokenAddress } : undefined;
-}
+export { dexPoolAssets, onchainIdentityFor };
 
 type Fetchers = { fetchStats: typeof fetchTokenStats; fetchPools: typeof fetchDexPools };
 

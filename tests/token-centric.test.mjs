@@ -2,12 +2,13 @@ import assert from "node:assert/strict";
 
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 import { coingeckoTokenIds } from "../src/data/coingecko-token-mappings.ts";
-import { dexScreenerTokenMappings } from "../src/data/dexscreener-token-mappings.ts";
+import { onchainTokenMappings } from "../src/data/onchain-token-mappings.ts";
 import { coverageMatrix, defillamaCoinsIdentifier, tokenCoverage } from "../src/data/provider-coverage.ts";
 import { normalizeCoinGeckoMarketItem } from "../src/lib/providers/coingecko.ts";
 import { normalizeCoinsPrice } from "../src/lib/providers/defillama-coins.ts";
 import { normalizeDefiLlamaCurrent, normalizeDefiLlamaHistory } from "../src/lib/providers/defillama.ts";
-import { configuredDexScreenerAssets, normalizeDexScreenerToken } from "../src/lib/providers/dexscreener.ts";
+import { dexPoolAssets } from "../src/data/onchain-identity.ts";
+import { buildDexPaprikaSnapshot } from "../src/lib/providers/dexpaprika.ts";
 import { calculateTokenMetrics, hasCompatibleScope } from "../src/lib/metrics/engine.ts";
 import { buildResearchContext } from "../src/lib/analysis/research-context.ts";
 import { visibleColumns } from "../src/lib/data/column-visibility.ts";
@@ -92,16 +93,16 @@ test("5, 15. protocol TVL feeds only the protocol-association ratio; incompatibl
 test("7. WBTC can never populate BTC", () => {
   const btc = tokenCoverage(byId("bitcoin-btc"));
   assert.equal(btc.find((item) => item.provider === "defillama_coins").identifier, "coingecko:bitcoin");
-  assert.equal(btc.find((item) => item.provider === "dexscreener").status, "unavailable");
-  assert.equal(configuredDexScreenerAssets().some((asset) => asset.tokenId === "bitcoin-btc"), false);
+  assert.equal(btc.find((item) => item.provider === "dexpaprika").status, "unavailable");
+  assert.equal(dexPoolAssets.some((asset) => asset.tokenId === "bitcoin-btc"), false);
   const wbtc = tokenCoverage(byId("ethereum-wbtc"));
-  assert.match(wbtc.find((item) => item.provider === "dexscreener").identifier, /0x2260fac5e5542a773aa44fbcfedf7c193bc2c599/i);
+  assert.match(wbtc.find((item) => item.provider === "dexpaprika").identifier, /0x2260fac5e5542a773aa44fbcfedf7c193bc2c599/i);
   assert.notEqual(coingeckoTokenIds["bitcoin-btc"], coingeckoTokenIds["ethereum-wbtc"]);
 });
 
 test("8. ETH is never substituted with WETH (nor SOL/BNB/AVAX with their wrappers)", () => {
   for (const native of ["ethereum-eth", "solana-sol", "bnb-bnb", "avalanche-avax"]) {
-    const dex = tokenCoverage(byId(native)).find((item) => item.provider === "dexscreener");
+    const dex = tokenCoverage(byId(native)).find((item) => item.provider === "dexpaprika");
     assert.equal(dex.status, "unavailable");
     assert.equal(dex.reason, "wrapped_representation_only");
     assert.match(dex.detail, /distinct wrapped asset that is not substituted/);
@@ -109,25 +110,18 @@ test("8. ETH is never substituted with WETH (nor SOL/BNB/AVAX with their wrapper
   assert.equal(defillamaCoinsIdentifier(byId("ethereum-eth")), "coingecko:ethereum");
 });
 
-test("9. a verified DEX Screener address mapping works by exact chain and address", () => {
-  const aave = configuredDexScreenerAssets().find((asset) => asset.tokenId === "aave-aave");
-  const pair = { chainId: "ethereum", dexId: "uniswap", pairAddress: "0xpair", baseToken: { address: aave.tokenAddress.toLowerCase(), symbol: "AAVE" }, quoteToken: { address: "0xquote", symbol: "WETH" }, priceUsd: "300", liquidity: { usd: 1_000_000 }, volume: { h24: 50_000 }, txns: { h24: { buys: 10, sells: 5 } } };
-  const snapshot = normalizeDexScreenerToken(aave, [pair], NOW);
+test("9. a verified DexPaprika address mapping works by exact network and address", () => {
+  const aave = dexPoolAssets.find((asset) => asset.tokenId === "aave-aave");
+  const stats = { summary: { liquidity_usd: 1_000_000, pools: 12, "24h": { volume_usd: 50_000, buys: 10, sells: 5, txns: 15 } } };
+  const snapshot = buildDexPaprikaSnapshot({ ...aave, externalAssetId: `${aave.network}:${aave.tokenAddress}` }, stats, null, NOW);
   assert.equal(snapshot.observations.find((item) => item.metricId === "liquidity_usd").value, 1_000_000);
   assert.ok(snapshot.observations.every((item) => item.scope === "market"));
-  assert.equal(tokenCoverage(byId("aave-aave")).find((item) => item.provider === "dexscreener").mappingClass, "A_deterministic");
-});
-
-test("10. same-symbol pairs at a different address (fuzzy matches) are rejected", () => {
-  const aave = configuredDexScreenerAssets().find((asset) => asset.tokenId === "aave-aave");
-  const impostor = { chainId: "ethereum", pairAddress: "0xfake", baseToken: { address: "0x000000000000000000000000000000000000dead", symbol: "AAVE", name: "Aave" }, quoteToken: { address: "0xquote", symbol: "WETH" }, priceUsd: "1", liquidity: { usd: 9e9 }, volume: { h24: 9e9 } };
-  const snapshot = normalizeDexScreenerToken(aave, [impostor], NOW);
-  assert.ok(snapshot.observations.every((item) => item.value === null && item.status === "unavailable"), "a ticker/name match is not identity");
+  assert.equal(tokenCoverage(byId("aave-aave")).find((item) => item.provider === "dexpaprika").mappingClass, "A_deterministic");
 });
 
 test("11. a missing mapping stays unavailable with an explicit reason", () => {
   for (const id of ["bitcoin-btc", "dogecoin-doge", "cardano-ada"]) {
-    const dex = tokenCoverage(byId(id)).find((item) => item.provider === "dexscreener");
+    const dex = tokenCoverage(byId(id)).find((item) => item.provider === "dexpaprika");
     assert.equal(dex.status, "unavailable");
     assert.equal(dex.reason, "native_asset_lacks_provider_identifier");
     assert.ok(dex.detail.length > 20);
@@ -154,13 +148,13 @@ test("14. the AI research context carries explicit scope on every evidence item"
   const context = buildResearchContext({
     now: new Date(NOW),
     token: { id: "aave-aave", name: "Aave", symbol: "AAVE", chainId: "ethereum", chainName: "Ethereum", contractAddress: byId("aave-aave").contractAddress, isNative: false, category: "Lending", description: null },
-    latestObservations: [row(1, "coingecko", "price_usd", 300, "token"), row(2, "defillama_coins", "price_usd", 301, "token"), row(3, "defillama", "tvl_usd", 3e10, "protocol"), row(4, "dexscreener", "liquidity_usd", 1e6, "market")],
+    latestObservations: [row(1, "coingecko", "price_usd", 300, "token"), row(2, "defillama_coins", "price_usd", 301, "token"), row(3, "defillama", "tvl_usd", 3e10, "protocol"), row(4, "dexpaprika", "liquidity_usd", 1e6, "market")],
     history: [], metricDefinitions: [],
     calculated: [{ id: 9, metric_id: "market_cap_to_tvl", metric_name: "Market cap / associated protocol TVL", unit: "ratio", value: 0.2, status: "available", formula: "x", calculated_at: NOW, period_start_at: NOW, period_end_at: NOW, source_observation_ids: [1, 3], provenance: null }],
     calculatedCategories: { market_cap_to_tvl: "valuation" }, calculatedSourceScopes: { market_cap_to_tvl: "token/protocol" },
     lastSuccess: {}, latestAttempts: {},
   });
-  assert.deepEqual(context.observations.map((item) => [item.provider, item.scope]).sort(), [["CoinGecko", "token"], ["DEX Screener", "market"], ["DeFiLlama", "protocol"], ["DeFiLlama (token prices)", "token"]].sort());
+  assert.deepEqual(context.observations.map((item) => [item.provider, item.scope]).sort(), [["CoinGecko", "token"], ["DexPaprika", "market"], ["DeFiLlama", "protocol"], ["DeFiLlama (token prices)", "token"]].sort());
   assert.equal(context.calculatedMetrics[0].scope, "calculated");
   assert.equal(context.calculatedMetrics[0].sourceScopes, "token/protocol");
   assert.ok(context.scope.some((item) => item.id === "scope:defillama_coins"));
@@ -198,9 +192,9 @@ test("coverage: every token has an identity or an explicit reason for each provi
         if (item.provider === "defillama_coins") {
           assert.ok(item.identifier === `coingecko:${coingeckoTokenIds[tokenId]}` || (token.contractAddress && item.identifier.endsWith(`:${token.contractAddress}`)), `${tokenId} DeFiLlama key is a documented identifier`);
         }
-        if (item.provider === "dexscreener") {
-          const mapping = dexScreenerTokenMappings.find((entry) => entry.tokenId === tokenId);
-          assert.equal(item.identifier, `${mapping.dexChainId}:${mapping.tokenAddress}`);
+        if (item.provider === "dexpaprika") {
+          const asset = dexPoolAssets.find((entry) => entry.tokenId === tokenId);
+          assert.equal(item.identifier, `${asset.network}:${asset.tokenAddress}`);
         }
         assert.notEqual(item.identifier, symbol, `${tokenId}/${item.provider} is not the raw ticker`);
       } else {
@@ -208,36 +202,15 @@ test("coverage: every token has an identity or an explicit reason for each provi
         assert.ok(item.detail, `${tokenId}/${item.provider} explains the gap`);
       }
     }
-    const dex = coverage.find((item) => item.provider === "dexscreener");
+    const dex = coverage.find((item) => item.provider === "dexpaprika");
     if (isNative && dex.status === "mapped") assert.ok(!WRAPPED_ADDRESSES.has(dex.identifier.split(":").slice(1).join(":").toLowerCase()), `${tokenId} is not mapped to a wrapper`);
     const llama = coverage.find((item) => item.provider === "defillama_coins").identifier;
     assert.ok(!llamaKeys.has(llama), `${tokenId} has a unique DeFiLlama key`);
     llamaKeys.add(llama);
   }
   const count = (provider) => matrix.filter((row) => row.coverage.find((item) => item.provider === provider).status === "mapped").length;
-  assert.deepEqual({ coingecko: count("coingecko"), defillama_coins: count("defillama_coins"), defillama: count("defillama"), dexscreener: count("dexscreener") }, { coingecko: 238, defillama_coins: 238, defillama: 24, dexscreener: 63 });
-  assert.equal(dexScreenerTokenMappings.filter((mapping) => mapping.tokenAddress && WRAPPED_ADDRESSES.has(mapping.tokenAddress.toLowerCase())).map((mapping) => mapping.tokenId).join(), "ethereum-wbtc", "only the WBTC record (its own asset) uses a wrapped address");
-});
-
-test("calculated DEX metrics match EVM addresses case-insensitively on every EVM chain (incl. Base), and other chains exactly", () => {
-  const dexRaw = (tokenId, chainId, requested, base) => ({
-    id: 1, provider_id: "dexscreener", token_id: tokenId, chain_id: chainId, collected_at: NOW, endpoint_label: "GET /tokens/v1",
-    payload: { requestedChainId: chainId, requestedTokenAddress: requested, providerPairs: [{
-      chainId, pairAddress: "0xpair", baseToken: { address: base }, quoteToken: { address: "0xquote" },
-      liquidity: { usd: 36_746_231 }, volume: { h24: 4_622_989 }, txns: { h24: { buys: 1, sells: 1 } },
-    }] },
-  });
-  const liquidity = (token, raw) => calculateTokenMetrics(token, [], [raw], NOW).find((row) => row.metric_id === "dex_aggregate_liquidity_usd");
-  // AERO on Base: the mapping stores lowercase, DEX Screener returns checksummed case (seen in the 2026-09-24 refresh).
-  const aero = { id: "base-aero", chain_id: "base", name: "Aerodrome", symbol: "AERO" };
-  const baseRow = liquidity(aero, dexRaw("base-aero", "base", "0x940181a94a35a4569e4529a3cdfb74e38fd98631", "0x940181a94A35A4569E4529A3CDfB74e38FD98631"));
-  assert.equal(baseRow.status, "available");
-  assert.equal(baseRow.value, 36_746_231);
-  // Solana mints are case-sensitive: a case-changed mint is a different identity.
-  const jup = { id: "jupiter-jup", chain_id: "solana", name: "Jupiter", symbol: "JUP" };
-  const mint = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN";
-  assert.equal(liquidity(jup, dexRaw("jupiter-jup", "solana", mint, mint)).status, "available");
-  assert.equal(liquidity(jup, dexRaw("jupiter-jup", "solana", mint, mint.toLowerCase())).status, "unavailable");
+  assert.deepEqual({ coingecko: count("coingecko"), defillama_coins: count("defillama_coins"), defillama: count("defillama"), dexpaprika: count("dexpaprika") }, { coingecko: 238, defillama_coins: 238, defillama: 24, dexpaprika: dexPoolAssets.length });
+  assert.equal(onchainTokenMappings.filter((mapping) => mapping.tokenAddress && WRAPPED_ADDRESSES.has(mapping.tokenAddress.toLowerCase())).map((mapping) => mapping.tokenId).join(), "ethereum-wbtc", "only the WBTC record (its own asset) uses a wrapped address");
 });
 
 let failures = 0;

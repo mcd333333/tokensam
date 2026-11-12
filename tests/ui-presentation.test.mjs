@@ -194,7 +194,7 @@ test("6b. Trading & Liquidity omits individual unavailable DEX metrics, and omit
   assert.ok(partialIds.includes("transactions_24h"), "transactions24h comes from dexActivity, independent of calculatedMetrics");
   assert.ok(!partialIds.some((id) => id === "dex_aggregate_volume_24h_usd" || id === "dex_buy_sell_ratio"), "an unavailable DEX metric is omitted, never fabricated");
 
-  // BTC: no DEX Screener mapping at all — Trading & Liquidity must not render as an empty shell
+  // BTC: no DexPaprika mapping at all — Trading & Liquidity must not render as an empty shell
   // (already covered for the whole section by test 4, re-asserted here for this specific path).
   const btc = buildProfileModel(profileData("bitcoin-btc"));
   assert.equal(btc.marketStructure.available, false, "no Trading & Liquidity section without a curated DEX mapping");
@@ -273,7 +273,7 @@ test("11. market-cap history is a token-scope CoinGecko series of stored observa
 test("12. provider names appear only in the data provenance disclosure; scope wording stays", () => {
   const withStoredText = [
     metric({ id: "market_cap_to_tvl", category: "valuation", unit: "ratio", value: 0.8, sourceScopes: "token/protocol", formula: "CoinGecko market_cap_usd / DeFiLlama protocol tvl_usd" }),
-    metric({ id: "fdv_to_tvl", category: "valuation", unit: "ratio", value: null, status: "unavailable", sourceScopes: "market/protocol", formula: "f", unavailableReason: "Required input unavailable: DEX Screener FDV." }),
+    metric({ id: "fdv_to_tvl", category: "valuation", unit: "ratio", value: null, status: "unavailable", sourceScopes: "market/protocol", formula: "f", unavailableReason: "Required input unavailable: DexPaprika FDV." }),
     metric({ id: "fees_growth_pct", category: "growth", unit: "percent", value: null, status: "unavailable", sourceScopes: "protocol", formula: "f", unavailableReason: "Insufficient history for DeFiLlama protocol fees; at least two distinct available observation times are required." }),
   ];
   const models = [
@@ -285,7 +285,7 @@ test("12. provider names appear only in the data provenance disclosure; scope wo
     const { provenance, ...methodology } = model.methodology;
     const visible = JSON.stringify({ ...model, methodology });
     assert.equal(namesProvider(visible), false, `no provider name outside data provenance: ${visible.match(/.{40}(coingecko|defillama|dex ?screener).{40}/i)?.[0]}`);
-    assert.ok(provenance.datasets.some((item) => item.provider === "CoinGecko") && provenance.datasets.some((item) => item.provider === "DEX Screener"), "providers remain disclosed under data provenance");
+    assert.ok(provenance.datasets.some((item) => item.provider === "CoinGecko") && provenance.datasets.some((item) => item.provider === "DexPaprika"), "providers remain disclosed under data provenance");
     assert.ok(!model.methodology.identifiers.some((item) => /^(bitcoin|aave|coingecko:|ethereum:)/.test(item.value)), "no provider-specific IDs or slugs");
   }
   const [aave, btc] = models;
@@ -303,7 +303,7 @@ test("12. provider names appear only in the data provenance disclosure; scope wo
   for (const column of COLUMNS) {
     for (const token of tokens) assert.equal(namesProvider(`${column.label} ${column.hint ?? ""} ${missingReason(column, token)}`), false);
   }
-  assert.equal(datasetLabel("dexscreener", "DEX Screener"), "DEX market data");
+  assert.equal(datasetLabel("dexpaprika", "DexPaprika"), "DEX market data");
   assert.equal(datasetLabel("defillama", "DeFiLlama"), "Protocol data");
 });
 
@@ -315,9 +315,9 @@ test("12b. per-token dataset freshness: own latest collection, backfill ignored,
       row("coingecko", 0.1, 0.12),
       row("defillama", 4, 4),
       row("defillama_coins", 3.5, 3.6),
-      row("dexscreener", 0.1, 0.1, "unavailable"),
+      row("dexpaprika", 0.1, 0.1, "unavailable"),
     ],
-    relevant: ["coingecko", "defillama", "defillama_coins", "dexscreener"],
+    relevant: ["coingecko", "defillama", "defillama_coins", "dexpaprika"],
     calculatedAt: hoursAgo(0.05),
     now: NOW,
   });
@@ -337,7 +337,7 @@ test("12b. per-token dataset freshness: own latest collection, backfill ignored,
 
   const model = buildProfileModel(profileData("bitcoin-btc", { datasetFreshness: [
     { id: "coingecko", label: "CoinGecko", collectedAt: hoursAgo(0.1), observedAt: hoursAgo(0.1), ageLabel: "6 min ago", state: "current" },
-    { id: "dexscreener", label: "DEX Screener", collectedAt: hoursAgo(0.1), observedAt: hoursAgo(0.1), ageLabel: "6 min ago", state: "current" },
+    { id: "dexpaprika", label: "DexPaprika", collectedAt: hoursAgo(0.1), observedAt: hoursAgo(0.1), ageLabel: "6 min ago", state: "current" },
   ] }));
   assert.deepEqual(model.methodology.freshness.map((item) => item.label), ["Market data"], "a dataset whose section is not shown for this token is not listed");
 });

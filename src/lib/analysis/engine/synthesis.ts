@@ -147,7 +147,7 @@ const RELEVANT_GAP_PREFIXES: Partial<Record<FindingCategory, string[]>> = {
   marketPerformance: ["insufficient_history_price_", "insufficient_history_volume_"],
   fundamentalPerformance: ["unmapped_defillama", "missing_tvl", "missing_fees_24h", "missing_revenue_24h", "insufficient_history_tvl_"],
   marketFundamentalRelationships: ["unmapped_defillama", "insufficient_history_price_", "insufficient_history_tvl_"],
-  liquidityMarketStructure: ["unmapped_dexscreener"],
+  liquidityMarketStructure: ["unmapped_dexpaprika"],
   tokenomics: ["missing_maximum_supply"],
   valuation: ["unmapped_defillama", "missing_market_cap", "missing_tvl", "missing_fees_24h", "missing_revenue_24h"],
   technical: ["unmapped_defillama"],

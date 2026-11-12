@@ -38,7 +38,7 @@ export type ProfileModel = {
     | { available: true; protocolName: string; scopeLine: string; primary: Card[]; valuation: Card[]; changes: Card[] }
     | { available: false; note: SectionNote };
   marketStructure: { available: true; scopeLine: string; cards: Card[] } | { available: false; note: SectionNote };
-  /** On-chain DEX pools (DexPaprika, up to 30 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
+  /** On-chain DEX pools (DexPaprika, up to 100 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
   dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; pools: PoolRow[]; /** pools stored beyond the rows listed */ morePools: number } | { available: false; note: SectionNote };
   /** Exchange listings (centralised and decentralised) with each exchange's own 24h volume (daily snapshot); omitted when none is stored. */
   exchanges: { available: true; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
@@ -127,7 +127,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
   const { token, calculatedMetrics } = data;
   const coverageFor = (provider: ProviderCoverage["provider"]) => data.coverage.find((item) => item.provider === provider);
   const protocolMapped = coverageFor("defillama")?.status === "mapped" && data.protocol !== null;
-  const dexCoverage = coverageFor("dexscreener");
+  const dexCoverage = coverageFor("dexpaprika");
   const dexMapped = dexCoverage?.status === "mapped";
   const displays = new Map(present(calculatedMetrics.map(presentMetric)).map((display) => [display.id, display]));
   const metric = (id: string) => displays.get(id);
@@ -206,6 +206,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
     marketStructure = { available: false, note: { title: "DEX markets", reason: dexReason(dexCoverage?.reason ?? null, data.isNative) } };
   } else {
     const { transactions24h, buys24h, sells24h } = data.dexActivity;
+    const activityCount = (count: number | null | undefined) => (formatCount(count ?? null) ? { note: `${formatCount(count ?? null)} transactions` } : {});
     const counts = [formatCount(buys24h) && `${formatCount(buys24h)} buys`, formatCount(sells24h) && `${formatCount(sells24h)} sells`].filter(Boolean).join(" · ");
     const aggregateLiquidity = metric("dex_aggregate_liquidity_usd");
     const primaryLiquidity = metric("dex_primary_pair_liquidity_usd");
@@ -221,6 +222,10 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
       aggregateVolume ? fromMetric(aggregateVolume) : null,
       metric("dex_volume_to_liquidity") ? fromMetric(metric("dex_volume_to_liquidity")!) : null,
       card("transactions_24h", "Transactions · 24h", formatCount(transactions24h), counts ? { note: counts } : {}),
+      card("dex_buy_volume_24h", "Buy volume · 24h", formatUsd(data.onchainMarkets?.activity?.buyVolume24hUsd ?? null, true)),
+      card("dex_sell_volume_24h", "Sell volume · 24h", formatUsd(data.onchainMarkets?.activity?.sellVolume24hUsd ?? null, true)),
+      card("dex_volume_6h", "Volume · 6h", formatUsd(data.onchainMarkets?.activity?.volume6hUsd ?? null, true), activityCount(data.onchainMarkets?.activity?.transactions6h)),
+      card("dex_volume_1h", "Volume · 1h", formatUsd(data.onchainMarkets?.activity?.volume1hUsd ?? null, true), activityCount(data.onchainMarkets?.activity?.transactions1h)),
       metric("dex_buy_sell_ratio") ? fromMetric(metric("dex_buy_sell_ratio")!) : null,
       aggregateShare ? fromMetric(aggregateShare) : null,
       distinct(primaryLiquidity, aggregateLiquidity),
@@ -249,13 +254,25 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
     if (onchain.pools.length === 0) {
       dexMarkets = { available: false, note: { title: "DEX markets", reason: "No on-chain DEX pools were found for this token's exact network and address." } };
     } else {
-      const priceChange = formatChange(onchain.priceChange24hPct);
+      const change = (id: string, label: string, value: number | null | undefined) => {
+        const formatted = formatChange(value ?? null);
+        return formatted ? { id, label, value: formatted.text, tone: formatted.tone } : null;
+      };
+      const activity = onchain.activity;
+      const range = activity?.priceLow24hUsd != null && activity?.priceHigh24hUsd != null
+        ? `${formatUsd(activity.priceLow24hUsd, false)} – ${formatUsd(activity.priceHigh24hUsd, false)}`
+        : null;
+      const poolCount = onchain.poolCount != null && Number.isFinite(onchain.poolCount) ? formatCount(onchain.poolCount) : null;
       const cards = present([
-        card("gt_liquidity", "DEX liquidity", formatUsd(onchain.liquidityUsd, true), { note: "Most liquid on-chain pool" }),
-        card("gt_volume", "DEX volume · 24h", formatUsd(onchain.volume24hUsd, true), { note: "Summed across on-chain pools" }),
-        priceChange ? { id: "gt_price_change", label: "Price change · 24h", value: priceChange.text, tone: priceChange.tone } : null,
-        card("gt_fdv", "Fully diluted valuation", formatUsd(onchain.fdvUsd, true)),
-        card("gt_market_cap", "Market cap", formatUsd(onchain.marketCapUsd, true)),
+        card("dex_liquidity", "DEX liquidity", formatUsd(onchain.liquidityUsd, true), { note: poolCount ? `Across ${poolCount} on-chain pools` : "Across on-chain pools" }),
+        card("dex_volume", "DEX volume · 24h", formatUsd(onchain.volume24hUsd, true), { note: "Across all on-chain pools" }),
+        card("dex_pool_count", "Pools indexed", poolCount),
+        change("dex_price_change_24h", "Price change · 24h (top pool)", onchain.priceChange24hPct),
+        change("dex_price_change_6h", "Price change · 6h", activity?.priceChange6hPct),
+        change("dex_price_change_1h", "Price change · 1h", activity?.priceChange1hPct),
+        card("dex_price_range_24h", "Price range · 24h", range),
+        card("dex_volume_7d", "DEX volume · 7d", formatUsd(activity?.volume7dUsd ?? null, true), { note: "Most liquid pools only" }),
+        card("dex_volume_30d", "DEX volume · 30d", formatUsd(activity?.volume30dUsd ?? null, true), { note: "Most liquid pools only" }),
       ]);
       const ranked = [...onchain.pools].sort((a, b) => (b.liquidityUsd ?? -1) - (a.liquidityUsd ?? -1));
       // Totals, the DEX list and the concentration indicators use every stored pool; the list shows the most liquid ones.
@@ -414,7 +431,7 @@ function buildMethodology(data: LiveTokenProfileData, mapped: { protocolMapped: 
   const available = data.calculatedMetrics.filter((item) => item.status === "available" && isValidNumber(item.value));
   const freshness = (data.datasetFreshness ?? [])
     // Defensive: never show a dataset whose section is not shown for this token.
-    .filter((item) => (item.id !== "defillama" || mapped.protocolMapped) && (item.id !== "dexscreener" || mapped.dexMapped))
+    .filter((item) => (item.id !== "defillama" || mapped.protocolMapped) && (item.id !== "dexpaprika" || mapped.dexMapped))
     .map((item) => ({ kind: item.id === "metrics" ? "calculation" as const : "observation" as const, label: datasetLabel(item.id, item.label), ageLabel: item.ageLabel, state: item.state, collectedAt: item.collectedAt, observedAt: item.observedAt }));
 
   const identifiers = [

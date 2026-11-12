@@ -129,8 +129,8 @@ const UNI_LIKE = await payloadFor("uniswap-uni", seed("uniswap-uni", "ethereum",
   ["coingecko", "price_change_24h_pct", 0.5, 0.5, { window_days: 1 }], ["coingecko", "price_change_7d_pct", 4.8, 0.5, { window_days: 7 }],
   ["coingecko", "circulating_supply", 600_000_000], ["coingecko", "total_supply", 1_000_000_000], ["coingecko", "maximum_supply", 1_000_000_000],
   ["defillama", "tvl_usd", 4_000_000_000, 2], ["defillama", "fees_24h_usd", 1_500_000, 2], ["defillama", "revenue_24h_usd", 300_000, 2],
-  ["dexscreener", "liquidity_usd", 168_830, 0.5], ["dexscreener", "fdv_usd", 8_500_000_000, 0.5],
-  ["dexscreener", "transactions_24h_count", 12_400, 0.5], ["dexscreener", "buys_24h_count", 6_500, 0.5], ["dexscreener", "sells_24h_count", 5_900, 0.5],
+  ["dexpaprika", "liquidity_usd", 168_830, 0.5], ["dexpaprika", "fdv_usd", 8_500_000_000, 0.5],
+  ["dexpaprika", "transactions_24h_count", 12_400, 0.5], ["dexpaprika", "buys_24h_count", 6_500, 0.5], ["dexpaprika", "sells_24h_count", 5_900, 0.5],
 ], [
   { metric: "tvl_growth_pct", value: 8.2 }, { metric: "fees_growth_pct", value: 5.5 }, { metric: "revenue_growth_pct", value: 4.0 },
   { metric: "market_cap_to_tvl", value: 1.25 }, { metric: "fdv_to_tvl", value: 2.13 },
@@ -145,8 +145,8 @@ const SUI_LIKE = await payloadFor("sui-sui", seed("sui-sui", "sui", [
   ["coingecko", "market_cap_usd", 11_950_000_000], ["coingecko", "volume_24h_usd", 2_150_000_000],
   ["coingecko", "price_change_24h_pct", 1.8, 0.5, { window_days: 1 }], ["coingecko", "price_change_7d_pct", 10.3, 0.5, { window_days: 7 }],
   ["coingecko", "circulating_supply", 3_495_000_000], ["coingecko", "total_supply", 10_000_000_000], ["coingecko", "maximum_supply", 10_000_000_000],
-  ["dexscreener", "liquidity_usd", 4_200_000, 0.5], ["dexscreener", "fdv_usd", 34_200_000_000, 0.5],
-  ["dexscreener", "transactions_24h_count", 18422, 0.5], ["dexscreener", "buys_24h_count", 9800, 0.5], ["dexscreener", "sells_24h_count", 8622, 0.5],
+  ["dexpaprika", "liquidity_usd", 4_200_000, 0.5], ["dexpaprika", "fdv_usd", 34_200_000_000, 0.5],
+  ["dexpaprika", "transactions_24h_count", 18422, 0.5], ["dexpaprika", "buys_24h_count", 9800, 0.5], ["dexpaprika", "sells_24h_count", 8622, 0.5],
 ], [
   { metric: "dex_aggregate_liquidity_usd", value: 6_100_000 }, { metric: "dex_aggregate_volume_24h_usd", value: 22_000_000 },
   { metric: "dex_volume_to_liquidity", value: 3.6 }, { metric: "dex_buy_sell_ratio", value: 9800 / 8622 },
@@ -160,8 +160,8 @@ const HYPE_LIKE = await payloadFor("hyperliquid-hype", seed("hyperliquid-hype", 
   ["coingecko", "price_change_24h_pct", -1.5, 0.5, { window_days: 1 }], ["coingecko", "price_change_7d_pct", -3.35, 0.5, { window_days: 7 }],
   ["coingecko", "circulating_supply", 334_000_000], ["coingecko", "total_supply", 1_000_000_000], ["coingecko", "maximum_supply", 1_000_000_000],
   ["defillama", "tvl_usd", 1_700_000_000, 2], ["defillama", "fees_24h_usd", 2_800_000, 2], ["defillama", "revenue_24h_usd", 2_800_000, 2],
-  ["dexscreener", "liquidity_usd", 5_400_000, 0.5], ["dexscreener", "fdv_usd", 38_500_000_000, 0.5],
-  ["dexscreener", "transactions_24h_count", 9_800, 0.5], ["dexscreener", "buys_24h_count", 5_600, 0.5], ["dexscreener", "sells_24h_count", 4_200, 0.5],
+  ["dexpaprika", "liquidity_usd", 5_400_000, 0.5], ["dexpaprika", "fdv_usd", 38_500_000_000, 0.5],
+  ["dexpaprika", "transactions_24h_count", 9_800, 0.5], ["dexpaprika", "buys_24h_count", 5_600, 0.5], ["dexpaprika", "sells_24h_count", 4_200, 0.5],
 ], [
   { metric: "tvl_growth_pct", value: 11.4 }, { metric: "fees_growth_pct", value: 9.1 }, { metric: "revenue_growth_pct", value: 9.1 },
   { metric: "market_cap_to_tvl", value: 7.6 }, { metric: "fdv_to_tvl", value: 22.6 },
@@ -512,7 +512,7 @@ function directPayload(overrides) {
     dataAsOf: MIDNIGHT.toISOString(),
     scope: [
       { id: "scope:defillama", provider: "DeFiLlama", mapped: false, statement: "No DeFiLlama protocol mapping." },
-      { id: "scope:dexscreener", provider: "DEX Screener", mapped: false, statement: "No DEX Screener mapping." },
+      { id: "scope:dexpaprika", provider: "DexPaprika", mapped: false, statement: "No DexPaprika mapping." },
     ],
     fields: [
       field("obs:price", "Overview", "Price", "$45.00", 45),
@@ -583,7 +583,7 @@ const ORCA_LIKE = {
   dataAsOf: MIDNIGHT.toISOString(),
   scope: [
     { id: "scope:defillama", provider: "DeFiLlama", mapped: true, statement: "DeFiLlama protocol mapping available." },
-    { id: "scope:dexscreener", provider: "DEX Screener", mapped: true, statement: "DEX Screener mapping available." },
+    { id: "scope:dexpaprika", provider: "DexPaprika", mapped: true, statement: "DexPaprika mapping available." },
   ],
   fields: [
     directField("obs:price", "Overview", "Price", "$3.20", 3.20),
@@ -621,7 +621,7 @@ const ILV_LIKE = {
   dataAsOf: MIDNIGHT.toISOString(),
   scope: [
     { id: "scope:defillama", provider: "DeFiLlama", mapped: false, statement: "No DeFiLlama protocol mapping." },
-    { id: "scope:dexscreener", provider: "DEX Screener", mapped: false, statement: "No DEX Screener mapping." },
+    { id: "scope:dexpaprika", provider: "DexPaprika", mapped: false, statement: "No DexPaprika mapping." },
   ],
   fields: [
     directField("obs:price", "Overview", "Price", "$45.00", 45),
@@ -721,7 +721,7 @@ test("K2. BTC-shaped (fundamentals + valuation unavailable): Executive Assessmen
     dataAsOf: MIDNIGHT.toISOString(),
     scope: [
       { id: "scope:defillama", provider: "DeFiLlama", mapped: false, statement: "No DeFiLlama protocol mapping." },
-      { id: "scope:dexscreener", provider: "DEX Screener", mapped: false, statement: "No DEX Screener mapping." },
+      { id: "scope:dexpaprika", provider: "DexPaprika", mapped: false, statement: "No DexPaprika mapping." },
     ],
     fields: [
       f("obs:price", "Overview", "Price", "$85,956.00", 85956),

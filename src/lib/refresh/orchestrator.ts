@@ -3,7 +3,6 @@ import { runCoinGeckoCollection } from "../providers/run-coingecko-collection.ts
 import { repairCoinGeckoDailyGaps } from "../providers/repair-coingecko-daily-gaps.ts";
 import { repairDefiLlamaDailyGaps } from "../providers/repair-defillama-daily-gaps.ts";
 import { runDefiLlamaCollection } from "../providers/run-defillama-collection.ts";
-import { runDexScreenerCollection } from "../providers/run-dexscreener-collection.ts";
 import { runDefiLlamaCoinsCollection } from "../providers/run-defillama-coins-collection.ts";
 import { runMetricsCalculation } from "../metrics/run-calculation.ts";
 import { getThrottleLevel } from "../monitoring/quota-tracker.ts";
@@ -61,7 +60,6 @@ export const defaultCollectors: Record<ProviderStep, CollectorDefinition> = {
       }
     },
   },
-  dexscreener: { collect: (client, options) => runDexScreenerCollection(client, options) },
   defillama: {
     // The written-permission gate is enforced, never bypassed: without it the step is skipped.
     skipReason: () => {

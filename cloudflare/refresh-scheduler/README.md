@@ -2,18 +2,18 @@
 
 External clock for both of Token Samurai's scheduled routes:
 
-- `/api/cron/refresh` — CoinGecko, DEX Screener, DeFiLlama, DeFiLlama Coins.
-- `/api/cron/geckoterminal` — GeckoTerminal on-chain data.
+- `/api/cron/refresh` — CoinGecko, DeFiLlama, DeFiLlama Coins.
+- `/api/cron/dexpaprika` — DexPaprika on-chain DEX data (stalest tokens first).
+- `/api/cron/exchanges` — daily exchange volumes.
 
 Vercel's Hobby plan cannot run its own Cron Trigger more often than once a
 day, but both routes are designed to be invoked far more often than they
 actually do work: each one has its own due-check (`isProviderDue()` /
-`REFRESH_POLICY` for the refresh route, `GECKOTERMINAL_SYNC_INTERVAL` for the
-GeckoTerminal route) that makes a tick where nothing is due return almost
+`REFRESH_POLICY` for the refresh route, a stalest-first walk for DexPaprika) that makes a tick where nothing is due return almost
 immediately. This Worker's job is only to provide that frequent tick — every
 5 minutes — via a Cloudflare Cron Trigger, which Cloudflare's free tier
-supports. All actual scheduling logic (which provider runs when, GeckoTerminal
-rotation/lock/pacing) stays server-side in the Next.js app; this Worker does
+supports. All actual scheduling logic (which provider runs when, DexPaprika
+rotation/pacing) stays server-side in the Next.js app; this Worker does
 not decide anything beyond "call both routes now."
 
 `vercel.json` still declares a once-daily Vercel Cron entry for
@@ -48,7 +48,7 @@ npx wrangler secret put CRON_SECRET   # paste the same value as the Vercel proje
 Set `REFRESH_URL` in `wrangler.toml` to the Vercel production **base** URL —
 not the complete `/api/cron/refresh` URL — e.g. `https://tokensam.vercel.app`
 (no trailing slash needed). The Worker appends `/api/cron/refresh` and
-`/api/cron/geckoterminal` to it itself. Then:
+`/api/cron/dexpaprika` to it itself. Then:
 
 ```bash
 npx wrangler deploy
@@ -68,12 +68,7 @@ smoke-tested without waiting for the next 5-minute tick.
 ## What each tick actually costs
 
 - `/api/cron/refresh`: cheap when nothing is due (an empty `due` list); at
-  most every 15 minutes it will actually collect CoinGecko/DEX Screener, at
+  most every 15 minutes it will actually collect CoinGecko, at
   most every 30 for DeFiLlama Coins, and every 6 hours for DeFiLlama.
-- `/api/cron/geckoterminal`: returns `{"status":"skipped","reason":"not_due"}`
-  on roughly two out of every three ticks; the third tick actually collects
-  a rotation batch (~30 tokens, 6.5 s apart, bounded to ~270 s). A tick that
-  lands while a previous collection is still running gets `{"status":"busy"}`
-  (HTTP 409) instead of starting a second, overlapping run — the existing
-  `geckoterminal_sync_runs` lock (see `src/lib/providers/geckoterminal-sync-lock.ts`)
-  already prevents that regardless of what triggers the request.
+- `/api/cron/dexpaprika`: refreshes the stalest few tokens (token stats about every 90 minutes, pool lists every 6 hours) and
+  does nothing when none is due; a monthly request cap keeps it inside DexPaprika's credit allowance.

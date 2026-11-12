@@ -121,7 +121,7 @@ export function buildTechnicalIndicators(rows: ObservationRow[], options: Indica
 
 /**
  * Adds indicators computed outside the daily-series pipeline above (for example
- * cross-sectional GeckoTerminal pool/DEX concentration, which has no daily
+ * cross-sectional DexPaprika pool/DEX concentration, which has no daily
  * series to sample from `SERIES_RULES`) into their category group, keeping the
  * same category order. This is the smallest extension point for an indicator
  * that isn't a function of `IndicatorInput` daily samples; it does not add a

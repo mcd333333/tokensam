@@ -1,9 +1,8 @@
 /**
- * Lease-based lock for the retention job, mirroring
- * `src/lib/providers/geckoterminal-sync-lock.ts`: a single "running" row
+ * Lease-based lock for the retention job, a single "running" row
  * (enforced by a partial unique index), with an expiring lease so a crashed
  * run releases itself automatically. No heartbeat renewal is needed here —
- * unlike GeckoTerminal collection, a retention run completes synchronously
+ * a retention run completes synchronously
  * within one route invocation (<= maxDuration), so the lease acquired at
  * start already covers the whole run.
  */

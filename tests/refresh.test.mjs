@@ -59,7 +59,7 @@ function providerFetch(mode, calls = []) {
     calls.push(url.hostname);
     const behaviour = url.hostname.includes("coingecko") ? mode.coingecko
       : url.hostname.includes("binance") ? mode.binance
-      : url.hostname.includes("dexscreener") ? mode.dexscreener : "unexpected";
+      : "unexpected";
     if (behaviour === "unexpected") throw new Error(`Unexpected provider host ${url.hostname}`);
     if (behaviour === "error") return new Response("{}", { status: 500 });
     if (behaviour === "hang") {
@@ -67,7 +67,7 @@ function providerFetch(mode, calls = []) {
     }
     if (url.hostname.includes("coingecko")) return Response.json(url.searchParams.get("ids").split(",").map(marketItem));
     if (url.hostname.includes("binance")) return Response.json(JSON.parse(url.searchParams.get("symbols")).map(tickerItem));
-    return Response.json([]); // DEX Screener: mapped tokens with no pools.
+    return Response.json([]);
   };
 }
 
@@ -79,15 +79,14 @@ test("1-2. a full refresh runs the real collectors, persists observations, then 
   const db = createFakeSupabase({ seed: baseSeed() });
   const hosts = [];
   const result = await runDataRefresh(db.client, new SupabaseRefreshStore(db.client), {
-    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "ok", binance: "ok", dexscreener: "ok" }, hosts), sleep: noSleep,
+    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "ok", binance: "ok" }, hosts), sleep: noSleep,
   });
 
   assert.equal(result.status, "succeeded");
-  assert.deepEqual(new Set(result.due), new Set(["coingecko", "dexscreener", "defillama", "defillama_coins"]));
+  assert.deepEqual(new Set(result.due), new Set(["coingecko", "defillama", "defillama_coins"]));
   const byStep = Object.fromEntries(result.steps.map((step) => [step.step, step]));
   assert.equal(byStep.coingecko.status, "succeeded");
   assert.equal(byStep.coingecko.detail.returnedAssets, 238);
-  assert.equal(byStep.dexscreener.status, "succeeded");
   assert.equal(byStep.defillama.status, "skipped", "the DeFiLlama written-permission gate is enforced, not bypassed");
   assert.match(byStep.defillama.error, /written permission/i);
   assert.ok(!hosts.some((host) => host.includes("llama")), "no DeFiLlama request without permission");
@@ -103,17 +102,14 @@ test("1-2. a full refresh runs the real collectors, persists observations, then 
   assert.equal(run.status, "succeeded");
   assert.ok(run.finished_at, "the lock is released when the run finishes");
   assert.equal(byStep.defillama_coins.status, "skipped", "token-level DeFiLlama prices share the written-permission gate");
-  assert.equal(db.rows("data_refresh_steps").length, 5);
+  assert.equal(db.rows("data_refresh_steps").length, 4);
 });
 
 test("6. unavailable provider values and metrics stay null, never zero", async () => {
   const db = createFakeSupabase({ seed: baseSeed() });
   await runDataRefresh(db.client, new SupabaseRefreshStore(db.client), {
-    trigger: "manual", fetchImpl: providerFetch({ coingecko: "ok", dexscreener: "ok" }), sleep: noSleep,
+    trigger: "manual", fetchImpl: providerFetch({ coingecko: "ok" }), sleep: noSleep,
   });
-  const dexRows = db.rows("token_metric_observations").filter((row) => row.provider_id === "dexscreener");
-  assert.ok(dexRows.length > 0);
-  assert.ok(dexRows.every((row) => row.status === "unavailable" && row.value === null), "no pools means unavailable, not zero");
   const maxSupply = db.rows("token_metric_observations").filter((row) => row.metric_id === "maximum_supply");
   assert.ok(maxSupply.every((row) => row.value === null && row.status === "unavailable"));
   const calculated = db.rows("calculated_metric_observations");
@@ -131,7 +127,9 @@ test("3-4. a failed provider is isolated: its previous observations survive and 
   ];
   const db = createFakeSupabase({ seed: baseSeed({ token_metric_observations: previous }) });
   const result = await runDataRefresh(db.client, new SupabaseRefreshStore(db.client), {
-    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "error", dexscreener: "ok" }), sleep: noSleep,
+    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "error" }), sleep: noSleep,
+    // One healthy provider alongside the failing one, so the run is partial rather than failed.
+    collectors: { defillama_coins: { collect: async () => ({ observations: 1 }) } },
   });
 
   assert.equal(result.status, "partial");
@@ -155,7 +153,7 @@ test("3-4. when every provider fails, metrics are skipped and stored results are
   const calculated = [{ id: 1, token_id: BTC.id, chain_id: BTC.chainId, metric_id: "volume_to_market_cap", value: 0.05, status: "available", calculated_at: ago(HOUR), input_fingerprint: "x" }];
   const db = createFakeSupabase({ seed: baseSeed({ calculated_metric_observations: calculated }) });
   const result = await runDataRefresh(db.client, new SupabaseRefreshStore(db.client), {
-    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "error", binance: "error", dexscreener: "error" }), sleep: noSleep,
+    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "error", binance: "error" }), sleep: noSleep,
   });
   assert.equal(result.status, "failed");
   assert.equal(result.steps.find((step) => step.step === "metrics").status, "skipped");
@@ -168,13 +166,13 @@ test("timeouts: a hanging provider is aborted before writing while others comple
   const db = createFakeSupabase({ seed: baseSeed() });
   const started = Date.now();
   const result = await runDataRefresh(db.client, new SupabaseRefreshStore(db.client), {
-    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "hang", dexscreener: "ok" }), sleep: noSleep,
+    trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "hang" }), sleep: noSleep,
     timeouts: { coingecko: 50 },
+    collectors: { defillama_coins: { collect: async () => ({ observations: 1 }) } },
   });
   assert.ok(Date.now() - started < 5_000, "the run is bounded by the provider budget");
   const coingecko = result.steps.find((step) => step.step === "coingecko");
   assert.equal(coingecko.status, "timed_out");
-  assert.equal(result.steps.find((step) => step.step === "dexscreener").status, "succeeded");
   assert.equal(result.status, "partial");
   assert.equal(db.rows("token_metric_observations").filter((row) => row.provider_id === "coingecko").length, 0);
 
@@ -190,16 +188,6 @@ test("timeouts: a hanging provider is aborted before writing while others comple
   assert.equal(diagnostics.stages["coingecko.persistProviderSnapshots"].status, "not_started");
   assert.ok(diagnostics.httpAttempts.length >= 1, "at least one HTTP attempt was recorded before the abort");
   assert.equal(diagnostics.httpAttempts[0].httpStatus, null, "the hang never produced a response");
-
-  // Other providers' timeout/error detail is unchanged: they never write to diagnostics.
-  const dexscreenerResult = await runDataRefresh(
-    createFakeSupabase({ seed: baseSeed() }).client,
-    new SupabaseRefreshStore(createFakeSupabase({ seed: baseSeed() }).client),
-    { trigger: "scheduled", fetchImpl: providerFetch({ coingecko: "ok", dexscreener: "hang" }), sleep: noSleep, timeouts: { dexscreener: 50 } },
-  );
-  const dexscreenerStep = dexscreenerResult.steps.find((step) => step.step === "dexscreener");
-  assert.equal(dexscreenerStep.status, "timed_out");
-  assert.deepEqual(dexscreenerStep.detail, {}, "a provider that never writes to diagnostics keeps the original empty timeout detail");
 });
 
 test("CollectorDiagnostics: partial state distinguishes not_started, running, and completed stages", () => {
@@ -237,7 +225,6 @@ test("5. metrics run once after providers and are skipped when nothing is due", 
   const order = [];
   const collectors = {
     coingecko: { collect: async () => { order.push("coingecko"); return { observations: 1 }; } },
-    dexscreener: { collect: async () => { order.push("dexscreener"); return { observations: 1 }; } },
     defillama: { collect: async () => { order.push("defillama"); return { observations: 1 }; } },
   };
   const db = createFakeSupabase({ seed: baseSeed() });
@@ -262,8 +249,6 @@ test("cadence: providers are due by their own interval, with tolerance for cron 
   assert.equal(isProviderDue("coingecko", at(12), now), false, "15-minute provider is not due before 13 minutes");
   assert.equal(isProviderDue("coingecko", at(13), now), true, "15-minute provider is due at 13 minutes");
   assert.equal(isProviderDue("coingecko", at(15), now), true);
-  assert.equal(isProviderDue("dexscreener", at(12), now), false);
-  assert.equal(isProviderDue("dexscreener", at(13), now), true);
   assert.equal(isProviderDue("defillama_coins", at(27), now), false, "30-minute provider is not due before 28 minutes");
   assert.equal(isProviderDue("defillama_coins", at(28), now), true, "30-minute provider is due at 28 minutes");
   assert.equal(isProviderDue("defillama", at(357), now), false, "6-hour provider is not due before 5h58m");
@@ -274,7 +259,6 @@ test("cadence: force refresh behavior remains unchanged", async () => {
   const order = [];
   const collectors = {
     coingecko: { collect: async () => { order.push("coingecko"); return { observations: 1 }; } },
-    dexscreener: { collect: async () => { order.push("dexscreener"); return { observations: 1 }; } },
     defillama: { collect: async () => { order.push("defillama"); return { observations: 1 }; } },
   };
   const db = createFakeSupabase({ seed: baseSeed() });
@@ -287,13 +271,13 @@ test("cadence: force refresh behavior remains unchanged", async () => {
   order.length = 0;
   const forced = await runDataRefresh(db.client, store, { trigger: "manual", collectors, calculateMetrics, force: true });
   assert.equal(forced.status, "succeeded");
-  assert.deepEqual(new Set(order), new Set(["coingecko", "dexscreener", "defillama", "metrics"]));
+  assert.deepEqual(new Set(order), new Set(["coingecko", "defillama", "metrics"]));
 });
 
 test("overall status distinguishes succeeded, partial, failed, and skipped", () => {
   const step = (name, status) => ({ step: name, status, startedAt: "", finishedAt: "", detail: {}, error: null });
   assert.equal(overallStatus([step("coingecko", "succeeded"), step("defillama", "skipped"), step("metrics", "succeeded")]), "succeeded");
-  assert.equal(overallStatus([step("coingecko", "succeeded"), step("dexscreener", "failed"), step("metrics", "succeeded")]), "partial");
+  assert.equal(overallStatus([step("coingecko", "succeeded"), step("defillama_coins", "failed"), step("metrics", "succeeded")]), "partial");
   assert.equal(overallStatus([step("coingecko", "succeeded"), step("metrics", "failed")]), "partial");
   assert.equal(overallStatus([step("coingecko", "timed_out"), step("metrics", "skipped")]), "failed");
   assert.equal(overallStatus([step("defillama", "skipped")]), "skipped");
@@ -306,7 +290,6 @@ test("9. overlapping runs are prevented and abandoned locks expire", async () =>
   const collectors = {
     coingecko: { collect: async () => { calls.push("coingecko"); await gate; return {}; } },
     binance: { collect: async () => ({}) },
-    dexscreener: { collect: async () => ({}) },
     defillama: { collect: async () => ({}) },
   };
   const db = createFakeSupabase({ seed: baseSeed() });
@@ -385,7 +368,6 @@ test("ownership: a run that loses its lease mid-refresh stops before metrics and
         return { observations: 1 };
       },
     },
-    dexscreener: { collect: async () => ({ observations: 1 }) },
     defillama: { collect: async () => ({ observations: 1 }) },
   };
   const result = await runDataRefresh(db.client, store, {
@@ -411,18 +393,18 @@ test("7. refresh status reports per-provider last success and provider-specific 
   const lastSuccess = await new SupabaseRefreshStore(db.client).lastSuccessfulSteps();
   assert.equal(lastSuccess.coingecko, ago(HOUR / 4), "failed attempts do not count as refreshes");
   assert.equal(lastSuccess.metrics, ago(HOUR / 5));
-  assert.equal(lastSuccess.dexscreener, undefined);
+  assert.equal(lastSuccess.dexpaprika, undefined);
 
   const status = buildRefreshStatus({
     lastSuccess,
-    latestCollected: { defillama: ago(12 * HOUR), dexscreener: ago(4 * HOUR) },
+    latestCollected: { defillama: ago(12 * HOUR), dexpaprika: ago(5 * HOUR) },
     latestRunStatus: "partial",
     now: NOW,
   });
   const byId = Object.fromEntries(status.providers.map((provider) => [provider.id, provider]));
   assert.equal(byId.coingecko.state, "current");
   assert.equal(byId.coingecko.ageLabel, "15 min ago");
-  assert.equal(byId.dexscreener.state, "stale", "4 hours exceeds the hourly providers' 3-hour threshold");
+  assert.equal(byId.dexpaprika.state, "stale", "5 hours exceeds DexPaprika's 4-hour threshold");
   assert.equal(byId.defillama.state, "current", "12 hours is within DeFiLlama's daily threshold");
   assert.equal(status.metricsCalculatedAt, ago(HOUR / 5));
   assert.equal(buildRefreshStatus({ lastSuccess: {}, latestCollected: {}, latestRunStatus: null, now: NOW }).providers[0].state, "unavailable");
@@ -516,7 +498,7 @@ test("metrics: unchanged rows are touched by id instead of rewritten, changed ro
 
 test("metrics: reading only LATEST_INPUTS leaves every calculated row unchanged", async () => {
   const pairs = [];
-  for (const provider of ["coingecko", "defillama", "defillama_coins", "dexscreener", "geckoterminal", "binance"]) {
+  for (const provider of ["coingecko", "defillama", "defillama_coins", "dexpaprika", "binance"]) {
     for (const metric of ["price_usd", "market_cap_usd", "volume_24h_usd", "tvl_usd", "revenue_24h_usd", "fees_24h_usd", "sells_24h_count",
       "buys_24h_count", "transactions_24h_count", "liquidity_usd", "fdv_usd", "price_change_24h_pct", "price_change_7d_pct",
       "circulating_supply", "total_supply", "maximum_supply"]) pairs.push([provider, metric]);

@@ -13,7 +13,7 @@ function loadLocalEnvironment() {
   }
 }
 
-// Usage: pnpm refresh [--force] [--providers=coingecko,dexscreener,defillama]
+// Usage: pnpm refresh [--force] [--providers=coingecko,defillama]
 const args = process.argv.slice(2);
 const force = args.includes("--force");
 const providersArg = args.find((arg) => arg.startsWith("--providers="));

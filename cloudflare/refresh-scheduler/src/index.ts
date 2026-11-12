@@ -291,13 +291,13 @@ async function callRoute(baseUrl: string, path: string, secret: string): Promise
 
 /**
  * Only a clean 2xx from `/api/cron/refresh` counts as "the refresh completed" for
- * deciding whether it is safe to add GeckoTerminal's own database work on top of it
+ * deciding whether it is safe to add the follow-on routes' own database work on top of it
  * this tick. `succeeded`/`partial`/nothing-due are all 200s. Anything else — a
  * network-level failure (`result.error`, which is what a `fetch` throwing looks
  * like, including the connection dropping mid-request the way a `maxDuration`-killed
  * Vercel invocation does), a 4xx (409 busy included: another invocation may still be
  * doing heavy work), or a 5xx — means Postgres may still be under load from that
- * attempt, so GeckoTerminal is skipped for this tick.
+ * attempt, so the follow-on routes are skipped for this tick.
  */
 function isSuccessfulResponse(result: RouteResult): boolean {
   return !result.error && result.status >= 200 && result.status < 300;
@@ -318,7 +318,7 @@ function refreshFinished(result: RouteResult): boolean {
 /**
  * Runs on every 5-minute Cron Trigger tick (see wrangler.toml).
  *
- * - /api/cron/refresh: each provider's own REFRESH_POLICY interval (CoinGecko/DEX Screener
+ * - /api/cron/refresh: each provider's own REFRESH_POLICY interval (CoinGecko
  *   15/30 min, DeFiLlama Coins 60 min, DeFiLlama 6 h, DUE_TOLERANCE_MS 2 min) decides what actually
  *   runs; a tick where nothing is due returns quickly with an empty `due` list.
  * - /api/cron/dexpaprika: refreshes the stalest on-chain DEX pool snapshots (DexPaprika), 6 per tick.
@@ -365,7 +365,7 @@ async function run(env: Env): Promise<RouteResult[]> {
 
   // On-chain DEX pools (DexPaprika): refreshes the stalest of the ~95 mapped tokens, 6 per tick, so the
   // list turns over about every 90 minutes and an idle tick is a no-op. This replaced the GeckoTerminal
-  // slices, which GeckoTerminal answered with HTTP 429 on ~85% of requests from Cloudflare's addresses.
+  // slices, which that provider answered with HTTP 429 on ~85% of requests from Cloudflare's addresses.
   let dexPaprikaResult: RouteResult | null = null;
   if (refreshFinished(refreshResult)) {
     dexPaprikaResult = await callRoute(env.REFRESH_URL, "/api/cron/dexpaprika?slice=6", env.CRON_SECRET);

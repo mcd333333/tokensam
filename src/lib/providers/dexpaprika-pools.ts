@@ -2,7 +2,7 @@
  * On-chain DEX pools for one exact token address, from DexPaprika's pool search
  * (`GET /networks/{network}/pools/search?token_address=...`, up to 100 most-liquid pools per token, one request each).
  *
- * This replaced DEX Screener's `/token-pairs` and GeckoTerminal as the pool source: both answered HTTP 429 to most
+ * This replaced the earlier DEX pair source's `/token-pairs` and GeckoTerminal as the pool source: both answered HTTP 429 to most
  * requests from Cloudflare's shared outbound addresses. DexPaprika meters by API key, not just by address:
  * a free key allows 30 requests/minute and 100,000 credits per rolling 30 days; with no key it is 15 requests/minute
  * and the first page only (which is all this needs). The key goes in the `Authorization` header as the bare value, on

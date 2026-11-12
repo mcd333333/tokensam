@@ -7,7 +7,7 @@ import { PROFILE_PROMPT_VERSION, PROFILE_SYSTEM_INSTRUCTION } from "../src/lib/a
  * Proves the shared grounding contract (PROFILE_SYSTEM_INSTRUCTION) reaches every one of the
  * six currently configured Production providers unmodified, that each provider's structured-output
  * mode (json_schema vs json_object) is unaffected by the prompt change, and that the specific
- * failure modes from Production run r4k2vvp1 (unsupported numbers/periods, unmapped DEX Screener
+ * failure modes from Production run r4k2vvp1 (unsupported numbers/periods, unmapped DexPaprika
  * mentions, unavailable-data hedging) are explicitly prohibited in the instruction text every
  * provider receives. This does not call any real API: every fetch is faked.
  */
@@ -88,8 +88,8 @@ test("4. the prompt explicitly prohibits unsupported numbers and periods, tied t
   assert.match(PROFILE_SYSTEM_INSTRUCTION, /Do not assume a metric exists just because it is commonly available/);
 });
 
-test("5. the prompt explicitly prohibits unmapped DEX Screener references", () => {
-  assert.match(PROFILE_SYSTEM_INSTRUCTION, /there is no verified DEX Screener mapping for this token, so DEX data is unavailable by design/);
+test("5. the prompt explicitly prohibits unmapped DexPaprika references", () => {
+  assert.match(PROFILE_SYSTEM_INSTRUCTION, /there is no verified DexPaprika mapping for this token, so DEX data is unavailable by design/);
   assert.match(PROFILE_SYSTEM_INSTRUCTION, /Never give another reason for the absence/);
 });
 
@@ -116,7 +116,7 @@ test("9. Production run gdj2hhww: the prompt now explicitly covers overview-writ
 });
 
 test("10. Production run svtndn2v: the prompt now flatly bars naming an unmapped provider in an overview or research question, and bars inferring a period from a calculated metric's mere existence", () => {
-  assert.match(PROFILE_SYSTEM_INSTRUCTION, /Never name DeFiLlama or DEX Screener in a section overview or in a research question\/rationale unless that provider is mapped/);
+  assert.match(PROFILE_SYSTEM_INSTRUCTION, /Never name DeFiLlama or DexPaprika in a section overview or in a research question\/rationale unless that provider is mapped/);
   assert.match(PROFILE_SYSTEM_INSTRUCTION, /Being a well-known data provider, being normally useful for that section, appearing in this schema or these instructions, or being something you know about from general knowledge never justifies naming it there/);
   assert.match(PROFILE_SYSTEM_INSTRUCTION, /describe that section's gap generically instead \("this section's data is unavailable for this token"\) without naming the provider/);
   assert.match(PROFILE_SYSTEM_INSTRUCTION, /from the mere existence of a calculated metric \(a calc: field carries only the period its own period\/label states, never a commonly-associated one like 24 hours\)/);

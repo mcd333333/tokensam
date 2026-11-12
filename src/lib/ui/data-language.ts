@@ -12,8 +12,7 @@ export const DATASET_LABELS: Record<string, string> = {
   binance: "Live exchange price",
   defillama_coins: "Reference token prices",
   defillama: "Protocol data",
-  dexscreener: "DEX market data",
-  geckoterminal: "On-chain DEX pools",
+  dexpaprika: "DEX market data",
 };
 
 export function datasetLabel(providerId: string, fallback: string): string {
@@ -26,15 +25,15 @@ export const TECHNICAL_PROVENANCE: { dataset: string; provider: string }[] = [
   { dataset: "Live exchange price", provider: "Coinbase" },
   { dataset: "Reference token prices", provider: "DeFiLlama (coins API)" },
   { dataset: "Protocol data", provider: "DeFiLlama" },
-  { dataset: "DEX market data", provider: "DEX Screener" },
-  { dataset: "On-chain DEX pools", provider: "DexPaprika" },
+  { dataset: "DEX market data", provider: "DexPaprika" },
 ];
 
 // Order matters: the scoped phrase is rewritten before the bare name.
 const REPLACEMENTS: [RegExp, string][] = [
   [/\bDeFiLlama protocol\b/g, "associated-protocol"],
   [/\bDeFiLlama\b/g, "associated-protocol"],
-  [/\bDEX Screener\b/g, "DEX market"],
+  [/\bDexPaprika\b/g, "DEX market"],
+  
   [/\bCoinGecko\b/g, "token"],
   // Binance appears in the stored provenance note on every live price observation
   // (see BINANCE_PRICE_NOTE); the same policy applies to it as to the other providers.

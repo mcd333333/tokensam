@@ -1,7 +1,7 @@
 export type TokenCategory = string;
 
 export type MetricSource = {
-  providerId: "coingecko" | "binance" | "defillama" | "dexscreener" | "defillama_coins" | "geckoterminal" | "calculated";
+  providerId: "coingecko" | "binance" | "defillama" | "dexpaprika" | "defillama_coins" | "calculated";
   collectedAt: string;
   note?: string | null;
 };
@@ -140,6 +140,26 @@ export type OnchainMarketsData = {
   /** Distinct DEX identifiers across this token's actual pools only (never every DEX on the network). */
   dexes: string[];
   pools: OnchainPool[];
+  /** Total pools DexPaprika indexes for the token (the list above shows only the most liquid). */
+  poolCount?: number | null;
+  /** Shorter-window and directional DEX activity (DexPaprika token endpoint); any field may be null. */
+  activity?: OnchainActivity;
+};
+
+export type OnchainActivity = {
+  buyVolume24hUsd: number | null;
+  sellVolume24hUsd: number | null;
+  volume1hUsd: number | null;
+  volume6hUsd: number | null;
+  transactions1h: number | null;
+  transactions6h: number | null;
+  priceChange1hPct: number | null;
+  priceChange6hPct: number | null;
+  priceHigh24hUsd: number | null;
+  priceLow24hUsd: number | null;
+  /** Summed over the most liquid stored pools only. */
+  volume7dUsd: number | null;
+  volume30dUsd: number | null;
 };
 
 export type LiveTokenProfileData = {

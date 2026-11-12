@@ -11,11 +11,11 @@ export const maxDuration = 300;
 
 /**
  * Scheduled data refresh. Requires `Authorization: Bearer <CRON_SECRET>`.
- * Optional query parameters for development: `force=1` and `providers=coingecko,dexscreener`.
+ * Optional query parameters for development: `force=1` and `providers=coingecko,defillama`.
  *
  * Primarily invoked every 5 minutes by the Cloudflare Worker
  * (cloudflare/refresh-scheduler/), which is what makes REFRESH_POLICY's
- * per-provider intervals (CoinGecko/DEX Screener 15 min, DeFiLlama Coins
+ * per-provider intervals (CoinGecko 15 min, DeFiLlama Coins
  * 30 min, DeFiLlama 6 h — see src/lib/refresh/config.ts) effective; each tick
  * is cheap when nothing is due, since isProviderDue() gates the actual work.
  * vercel.json also declares a once-daily Vercel Cron entry as a fallback
@@ -48,7 +48,7 @@ export async function GET(request: Request): Promise<Response> {
     // Worker tick, so this whole monitoring block -- ~5-6 Supabase round trips, all pure
     // overhead on top of whatever runDataRefresh itself did -- only runs when something
     // was actually due this tick (or on a forced/manual call, which wants full detail).
-    // The shortest REFRESH_POLICY interval is 15 minutes (coingecko/dexscreener), so this
+    // The shortest REFRESH_POLICY interval is 15 minutes (coingecko), so this
     // still checks at least that often: "every ~15 min" instead of every 5, cutting this
     // block's own invocation count by roughly two-thirds without widening how long a real
     // threshold crossing could go unnoticed by more than one due-cycle.

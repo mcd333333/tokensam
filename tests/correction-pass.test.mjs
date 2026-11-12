@@ -14,10 +14,10 @@ const VIOLATIONS = [
   'executiveSummary.overview: directional/sentiment language ("momentum"); describe observed changes neutrally.',
   "marketPerformance.statements[4].text: number(s) 24 do not match any value in the cited sources.",
   'marketPerformance.statements[4].text: "24-hour" is not a period established by the cited sources.',
-  "liquidityMarketStructure.overview: refers to DEX Screener data without stating the context's reason (no DEX Screener mapping for this token).",
+  "liquidityMarketStructure.overview: refers to DexPaprika data without stating the context's reason (no DexPaprika mapping for this token).",
   "tokenomics.overview: contains numbers or dates; state evidence-derived facts as sourced statements.",
   'risks[1].detail: "7-day" is not a period established by the cited sources.',
-  "furtherResearchQuestions[0]: refers to DEX Screener data without stating the context's reason (no DEX Screener mapping for this token).",
+  "furtherResearchQuestions[0]: refers to DexPaprika data without stating the context's reason (no DexPaprika mapping for this token).",
 ];
 
 test("R1. corrections are grouped by report location from the validator's own messages (no duplicates)", () => {
@@ -37,8 +37,8 @@ test("R1. corrections are grouped by report location from the validator's own me
 test("R2. fixes are generic and use the prompt's prescribed provider wording", () => {
   const items = correctionItems(VIOLATIONS, WORDING);
   const dex = items.find((item) => item.location === "liquidityMarketStructure.overview");
-  assert.ok(WORDING["DEX Screener"], "the wording is read from the system instruction");
-  assert.ok(dex.fix[0].includes(WORDING["DEX Screener"]));
+  assert.ok(WORDING["DexPaprika"], "the wording is read from the system instruction");
+  assert.ok(dex.fix[0].includes(WORDING["DexPaprika"]));
   assert.match(items.find((item) => item.location === "tokenomics.overview").fix[0], /Remove every digit/);
   assert.match(items.find((item) => item.location === "executiveSummary.overview").fix[0], /neutral/);
   const other = correctionItems(["valuation.statements[2].text: number(s) 9 do not match any value in the cited sources."], WORDING);
