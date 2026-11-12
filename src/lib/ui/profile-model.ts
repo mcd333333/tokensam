@@ -310,7 +310,10 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
         byDex.set(key, entry);
       }
       const totalLiquidity = [...byDex.values()].reduce((sum, entry) => sum + entry.liquidity, 0);
+      // Only DEXes with both a name and a logo get a box: an "Unnamed DEX" or a DEX we have no logo for is left out (its
+      // pools remain in the pool list and in every total). Shares stay relative to all stored pools, so they may sum to under 100%.
       const groups: DexGroupRow[] = [...byDex.entries()]
+        .filter(([key, entry]) => key !== "unnamed" && entry.label !== "Unnamed DEX" && Boolean(onchain.dexLogos?.[key]))
         .sort((a, b) => b[1].liquidity - a[1].liquidity || b[1].volume - a[1].volume)
         .map(([key, entry]) => ({
           id: key,

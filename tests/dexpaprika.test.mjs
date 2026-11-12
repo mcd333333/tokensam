@@ -304,6 +304,7 @@ test("a profile builds its DEX Markets and concentration from the stored DexPapr
   assert.equal(data.onchainMarkets.priceChange24hPct, -2.5, "from the most liquid pool");
   assert.equal(data.onchainMarkets.fdvUsd, null, "FDV is CoinGecko's and shown in Tokenomics");
   assert.deepEqual(data.onchainMarkets.dexes, ["uniswap_v3", "sushiswap"]);
+  data.onchainMarkets.dexLogos = { uniswap_v3: "https://example.test/uni.png", sushiswap: "https://example.test/sushi.png" };
   const model = buildProfileModel(data);
   assert.equal(model.dexMarkets.available, true);
   const cardIds = model.dexMarkets.cards.map((card) => card.id);
@@ -324,6 +325,7 @@ test("a token with more than 30 stored pools lists the 30 most liquid and counts
     pairAddress: `0x${index}`, dexId: "uniswap_v3", liquidityUsd: 1_000_000 - index * 1_000, volume24hUsd: 100, priceUsd: 1, priceChange24hPct: 0, createdAt: null,
   }));
   const data = await profileFor(third.tokenId, { pools_at: NOW_ISO, pools }, [["volume_24h_usd", 4_500]]);
+  data.onchainMarkets.dexLogos = { uniswap_v3: "https://example.test/uni.png" };
   const model = buildProfileModel(data);
   assert.equal(model.dexMarkets.pools.length, 30);
   assert.equal(model.dexMarkets.morePools, 15);
@@ -397,11 +399,10 @@ test("DEX boxes: readable names (never raw addresses), unnamed pools share one b
   data.onchainMarkets.dexLogos = { uniswap_v3: "https://example.test/uni.png" };
   const model = buildProfileModel(data);
   const labels = model.dexMarkets.groups.map((group) => group.label);
-  assert.deepEqual(labels, ["Uniswap V3", "Unnamed DEX", "Meteora Dlmm"]);
-  assert.equal(model.dexMarkets.groups[1].pools, 2, "address-only pools are merged into one Unnamed DEX box");
-  assert.ok(!labels.some((label) => label.startsWith("0x")));
+  assert.deepEqual(labels, ["Uniswap V3"], "a DEX with no name (Unnamed DEX) or no logo (Meteora Dlmm) gets no box");
   assert.equal(model.dexMarkets.groups[0].logo, "https://example.test/uni.png");
-  assert.equal(model.dexMarkets.groups[1].logo, null);
+  assert.equal(model.dexMarkets.groups[0].sharePct < 100, true, "shares stay relative to every stored pool");
+  assert.equal(model.dexMarkets.pools.length, 4, "the hidden DEXes' pools still appear in the pool list");
   assert.ok(model.dexMarkets.pools.every((pool) => !pool.dexLabel.startsWith("0x")));
 });
 

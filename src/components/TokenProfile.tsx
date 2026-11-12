@@ -312,7 +312,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
           {dexMarkets.cards.length > 0 ? <div className="tile-grid tile-grid-3">{dexMarkets.cards.map((item) => <Tile key={item.id} item={item} />)}</div> : null}
           {dexMarkets.groups.length > 0 ? (
             <div>
-              <h3>Decentralised exchanges<small>{dexMarkets.groups.length} found · across the {dexMarkets.groupedPools} most liquid pools</small></h3>
+              <h3>Decentralised exchanges<small>{dexMarkets.groups.length} shown · across the {dexMarkets.groupedPools} most liquid pools</small></h3>
               <DexGroupGrid groups={dexMarkets.groups} />
               <p className="scope-line">Pool figures are each pool&apos;s total value locked and trading volume, counting both sides of every pair, so they can differ from the token-side totals above.</p>
             </div>
