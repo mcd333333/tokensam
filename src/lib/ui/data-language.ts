@@ -23,7 +23,7 @@ export function datasetLabel(providerId: string, fallback: string): string {
 /** Data provenance: which external service supplies each dataset. Only rendered in that disclosure. */
 export const TECHNICAL_PROVENANCE: { dataset: string; provider: string }[] = [
   { dataset: "Market data", provider: "CoinGecko" },
-  { dataset: "Live exchange price", provider: "Binance" },
+  { dataset: "Live exchange price", provider: "Coinbase" },
   { dataset: "Reference token prices", provider: "DeFiLlama (coins API)" },
   { dataset: "Protocol data", provider: "DeFiLlama" },
   { dataset: "DEX market data", provider: "DEX Screener" },
