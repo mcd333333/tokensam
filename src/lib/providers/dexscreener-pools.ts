@@ -13,8 +13,13 @@ const BASE_URL = "https://api.dexscreener.com";
 const REQUEST_TIMEOUT_MS = 15_000;
 /** Pools kept per token, most liquid first. */
 export const MAX_POOLS_PER_TOKEN = 30;
-/** Minimum spacing between requests (the limit is 300/minute). */
-export const DEX_POOL_REQUEST_INTERVAL_MS = 300;
+/**
+ * Minimum spacing between requests. The documented limit is 300/minute, but from Cloudflare's shared outbound
+ * addresses a 300 ms spacing drew an immediate 429 on the second request, so the pool collector goes slower.
+ */
+export const DEX_POOL_REQUEST_INTERVAL_MS = 1_500;
+/** Pause after a 429 before the collector moves on to the next token. */
+export const DEX_POOL_RATE_LIMIT_COOLDOWN_MS = 5_000;
 
 export type DexPool = {
   pairAddress: string;

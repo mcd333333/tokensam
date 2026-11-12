@@ -96,18 +96,36 @@ test("refreshes never-fetched tokens first, then the stalest, skipping fresh one
   assert.ok(!ids.slice(0, 2).includes(stale.tokenId), "never-fetched tokens go before the stalest one");
 });
 
-test("reports none_due when everything is fresh, and stops the slice on a 429", async () => {
+test("reports none_due when everything is fresh; a lone 429 is skipped after a cooldown, two in a row stop the slice", async () => {
   const now = new Date("2026-11-12T12:00:00Z");
   const all = dexPoolAssets.map((asset) => ({ token_id: asset.tokenId, fetched_at: now.toISOString() }));
   const idle = await runDexPoolCollection(fakeClient({ snapshots: all }).client, { ...baseOptions, now, maxTokens: 5 });
   assert.equal(idle.stoppedReason, "none_due");
 
   const { DexPoolApiError } = await import("../src/lib/providers/dexscreener-pools.ts");
-  const limited = await runDexPoolCollection(fakeClient().client, {
+  const sleeps = [];
+  let call = 0;
+  const lone = await runDexPoolCollection(fakeClient().client, {
+    ...baseOptions, now, maxTokens: 3, sleep: async (ms) => { sleeps.push(ms); },
+    fetchPools: async () => { call += 1; if (call === 1) throw new DexPoolApiError("limited", 429); return [{ pairAddress: "0x1" }]; },
+  });
+  assert.equal(lone.attempted, 3);
+  assert.equal(lone.failed, 1);
+  assert.equal(lone.succeeded, 2, "the slice carries on after one 429");
+  assert.ok(sleeps.includes(5_000), "with a cooldown after the 429");
+
+  const throttled = await runDexPoolCollection(fakeClient().client, {
     ...baseOptions, now, maxTokens: 5, fetchPools: async () => { throw new DexPoolApiError("limited", 429); },
   });
-  assert.equal(limited.attempted, 1);
-  assert.equal(limited.stoppedReason, "rate_limited");
+  assert.equal(throttled.attempted, 2);
+  assert.equal(throttled.stoppedReason, "rate_limited");
+  assert.match(throttled.firstError, /limited/);
+});
+
+test("only canonical-universe tokens are collected, so every row has a token to attach to", () => {
+  assert.ok(dexPoolAssets.length > 0 && dexPoolAssets.length <= 55);
+  const ids = new Set(canonicalTokens.map((token) => token.id));
+  for (const asset of dexPoolAssets) assert.ok(ids.has(asset.tokenId), asset.tokenId);
 });
 
 const profileFor = (tokenId, snapshot) => {

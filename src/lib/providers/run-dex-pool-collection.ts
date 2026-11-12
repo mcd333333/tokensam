@@ -1,5 +1,6 @@
 import { dexScreenerTokenMappings } from "../../data/dexscreener-token-mappings.ts";
-import { DEX_POOL_REQUEST_INTERVAL_MS, DexPoolApiError, fetchDexPools } from "./dexscreener-pools.ts";
+import { canonicalTokens } from "../../data/canonical-tokens.ts";
+import { DEX_POOL_RATE_LIMIT_COOLDOWN_MS, DEX_POOL_REQUEST_INTERVAL_MS, DexPoolApiError, fetchDexPools } from "./dexscreener-pools.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
 
@@ -16,9 +17,14 @@ export type DexPoolCollectionResult = {
   firstError?: string;
 };
 
-/** Tokens with an exact DEX Screener chain/address identity: the only ones that can have pools. */
+const canonicalIds = new Set(canonicalTokens.map((token) => token.id));
+
+/**
+ * Tokens with an exact DEX Screener chain/address identity: the only ones that can have pools. Limited to the
+ * canonical universe, because the mapping file also holds retired tokens that have no row in `tokens` to attach to.
+ */
 export const dexPoolAssets = dexScreenerTokenMappings
-  .filter((mapping) => mapping.dexChainId && mapping.tokenAddress)
+  .filter((mapping) => mapping.dexChainId && mapping.tokenAddress && canonicalIds.has(mapping.tokenId))
   .map((mapping) => ({ tokenId: mapping.tokenId, chainId: mapping.dexChainId as string, tokenAddress: mapping.tokenAddress as string }));
 
 /**
@@ -49,6 +55,7 @@ export async function runDexPoolCollection(
     .filter((asset) => now.getTime() - (fetchedAt.get(asset.tokenId) ?? 0) >= DEX_POOL_REFRESH_AFTER_MS)
     .sort((a, b) => (fetchedAt.get(a.tokenId) ?? 0) - (fetchedAt.get(b.tokenId) ?? 0));
 
+  let consecutiveRateLimits = 0;
   const result: DexPoolCollectionResult = {
     attempted: 0, succeeded: 0, failed: 0, stoppedReason: due.length === 0 ? "none_due" : "done", dueRemaining: due.length,
   };
@@ -65,13 +72,21 @@ export async function runDexPoolCollection(
       if (writeError) throw new Error(`Supabase write DEX pools failed: ${writeError.message}`);
       result.succeeded += 1;
       result.dueRemaining -= 1;
+      consecutiveRateLimits = 0;
     } catch (caught) {
       result.failed += 1;
       const message = caught instanceof Error ? caught.message : "unknown error";
       console.error(`[dex-pools] ${asset.tokenId} failed: ${message}`);
       result.firstError ??= `${asset.tokenId} ${message}`.slice(0, 300);
-      // A 429 means every further call this slice would fail too.
-      if (caught instanceof DexPoolApiError && caught.status === 429) { result.stoppedReason = "rate_limited"; break; }
+      // A single 429 is skipped (that token stays due and is retried on a later tick) after a cooldown; two in a
+      // row mean the address is throttled, so the slice stops rather than hammering it.
+      if (caught instanceof DexPoolApiError && caught.status === 429) {
+        consecutiveRateLimits += 1;
+        if (consecutiveRateLimits >= 2) { result.stoppedReason = "rate_limited"; break; }
+        await sleep(DEX_POOL_RATE_LIMIT_COOLDOWN_MS);
+      } else {
+        consecutiveRateLimits = 0;
+      }
     }
   }
   return result;
