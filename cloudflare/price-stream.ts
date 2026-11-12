@@ -20,6 +20,8 @@ type Source = "binance" | "coinbase";
 type Price = { p: number; c: number; at: number };
 
 const IDLE_CLOSE_MS = 120_000;
+/** A connection that has delivered nothing for this long is treated as dead and reopened. */
+const SILENT_RECONNECT_MS = 60_000;
 const ALARM_INTERVAL_MS = 30_000;
 /** How long a request waits for the first frames after opening a connection. */
 const FIRST_DATA_WAIT_MS = 4_000;
@@ -27,6 +29,32 @@ const FIRST_DATA_WAIT_MS = 4_000;
 const BINANCE_URL = () =>
   `https://data-stream.binance.vision/stream?streams=${Object.values(binanceSymbols).map((symbol) => `${symbol.toLowerCase()}@miniTicker`).join("/")}`;
 const COINBASE_URL = "https://advanced-trade-ws.coinbase.com";
+
+/** Combined stream frame: {"stream":"btcusdt@miniTicker","data":{"s":"BTCUSDT","c":"last","o":"24h open"}}. */
+export function parseBinanceFrame(message: unknown): { key: string; p: number; c: number } | null {
+  const data = (message as { data?: { s?: string; c?: string; o?: string } })?.data;
+  if (!data?.s) return null;
+  const last = Number(data.c);
+  const open = Number(data.o);
+  if (!Number.isFinite(last) || last <= 0 || !Number.isFinite(open) || open <= 0) return null;
+  return { key: data.s, p: last, c: (last / open - 1) * 100 };
+}
+
+/** Advanced Trade ticker: {"channel":"ticker","events":[{"tickers":[{"product_id","price","price_percent_chg_24_h"}]}]}. */
+export function parseCoinbaseFrame(message: unknown): { key: string; p: number; c: number }[] {
+  const body = message as { channel?: string; events?: { tickers?: { product_id?: string; price?: string; price_percent_chg_24_h?: string }[] }[] };
+  if (body?.channel !== "ticker") return [];
+  const out: { key: string; p: number; c: number }[] = [];
+  for (const event of body.events ?? []) {
+    for (const ticker of event.tickers ?? []) {
+      const price = Number(ticker.price);
+      const change = Number(ticker.price_percent_chg_24_h);
+      if (!ticker.product_id || !Number.isFinite(price) || price <= 0 || !Number.isFinite(change)) continue;
+      out.push({ key: ticker.product_id, p: price, c: change });
+    }
+  }
+  return out;
+}
 
 function isSource(value: string): value is Source {
   return value === "binance" || value === "coinbase";
@@ -55,6 +83,7 @@ export class PriceStream {
     this.source = segment;
     this.lastRequestAt = Date.now();
     await this.ensureAlarm();
+    this.dropIfSilent();
     await this.ensureConnected();
     // A freshly opened connection has little or no data yet: give the first frames a moment to arrive
     // (until most of the subscribed symbols have reported, or the wait runs out).
@@ -63,12 +92,9 @@ export class PriceStream {
     while (this.socket && this.prices.size < expected * 0.9 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 100));
 
     const now = Date.now();
-    const prices: Record<string, { p: number; c: number }> = {};
-    let oldest = now;
-    for (const [key, price] of this.prices) {
-      prices[key] = { p: price.p, c: price.c };
-      oldest = Math.min(oldest, price.at);
-    }
+    // `at` is when each symbol last traded (quiet tokens update rarely); the reader judges its age.
+    const prices: Record<string, { p: number; c: number; at: number }> = {};
+    for (const [key, price] of this.prices) prices[key] = { p: price.p, c: price.c, at: price.at };
     return Response.json({
       source: this.source,
       connected: this.socket !== null,
@@ -78,7 +104,8 @@ export class PriceStream {
       lastError: this.lastError,
       lastClose: this.lastClose,
       count: this.prices.size,
-      asOf: new Date(this.prices.size > 0 ? oldest : now).toISOString(),
+      // The feed's own liveness: the time of its last frame, not of its quietest symbol.
+      asOf: new Date(this.lastMessageAt ?? now).toISOString(),
       prices,
     }, { headers: { "cache-control": "no-store" } });
   }
@@ -90,8 +117,14 @@ export class PriceStream {
       this.close("idle");
       return;
     }
+    this.dropIfSilent();
     await this.ensureConnected();
     await this.state.storage.setAlarm(Date.now() + ALARM_INTERVAL_MS);
+  }
+
+  /** A socket that is open but silent (a half-dead connection) is closed so the next call reopens it. */
+  private dropIfSilent(): void {
+    if (this.socket && this.lastMessageAt !== null && Date.now() - this.lastMessageAt > SILENT_RECONNECT_MS) this.close("silent");
   }
 
   private async ensureAlarm(): Promise<void> {
@@ -150,27 +183,12 @@ export class PriceStream {
     else this.onCoinbase(message);
   }
 
-  /** Combined stream frame: {"stream":"btcusdt@miniTicker","data":{"s":"BTCUSDT","c":"last","o":"24h open"}}. */
   private onBinance(message: unknown): void {
-    const data = (message as { data?: { s?: string; c?: string; o?: string } })?.data;
-    if (!data?.s) return;
-    const last = Number(data.c);
-    const open = Number(data.o);
-    if (!Number.isFinite(last) || last <= 0 || !Number.isFinite(open) || open <= 0) return;
-    this.prices.set(data.s, { p: last, c: (last / open - 1) * 100, at: Date.now() });
+    const tick = parseBinanceFrame(message);
+    if (tick) this.prices.set(tick.key, { p: tick.p, c: tick.c, at: Date.now() });
   }
 
-  /** Advanced Trade ticker: {"channel":"ticker","events":[{"tickers":[{"product_id","price","price_percent_chg_24_h"}]}]}. */
   private onCoinbase(message: unknown): void {
-    const body = message as { channel?: string; events?: { tickers?: { product_id?: string; price?: string; price_percent_chg_24_h?: string }[] }[] };
-    if (body?.channel !== "ticker") return;
-    for (const event of body.events ?? []) {
-      for (const ticker of event.tickers ?? []) {
-        const price = Number(ticker.price);
-        const change = Number(ticker.price_percent_chg_24_h);
-        if (!ticker.product_id || !Number.isFinite(price) || price <= 0 || !Number.isFinite(change)) continue;
-        this.prices.set(ticker.product_id, { p: price, c: change, at: Date.now() });
-      }
-    }
+    for (const tick of parseCoinbaseFrame(message)) this.prices.set(tick.key, { p: tick.p, c: tick.c, at: Date.now() });
   }
 }

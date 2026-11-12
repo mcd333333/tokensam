@@ -34,6 +34,16 @@ variables added in the dashboard.
 - The "update your Wrangler configuration" banner is informational: `keep_vars` keeps dashboard-only variables across
   deploys, and secrets must not be committed.
 
+## Live prices
+
+Binance's and Coinbase's REST APIs throttle or block Cloudflare Workers' shared addresses (HTTP 403 / 429), so live
+exchange prices come from WebSocket feeds held by one Durable Object per exchange (`cloudflare/price-stream.ts`,
+binding `PRICE_STREAM`). `src/lib/providers/live-price-source.ts` reads them for both the `/api/live-prices` ticker and
+the server-rendered pages: Coinbase where it lists the token (USD-quoted), Binance for the rest (USDT-quoted), Coinbase
+REST as the fallback, and the stored CoinGecko price when nothing live exists. Each Durable Object opens its upstream
+connection when a request arrives and closes it after 2 minutes without one, to keep duration billing down. Read-only
+diagnostics (connection state, last error, message count): `/ws-prices/coinbase` and `/ws-prices/binance`.
+
 ## Notes
 
 - `process.env` is populated from the Worker's variables and secrets (`nodejs_compat` with this compatibility date).

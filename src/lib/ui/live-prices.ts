@@ -1,4 +1,3 @@
-import { coinbaseProducts } from "../../data/coinbase-token-mappings.ts";
 import type { DashboardToken } from "../../types/token.ts";
 
 /**
@@ -17,7 +16,8 @@ import type { DashboardToken } from "../../types/token.ts";
  * would simply fail for those viewers. The route sits on Cloudflare's network.
  *
  * The provider id "binance" below is the id of the live-exchange-price slot (see
- * DATASET_LABELS), kept from when Binance filled it; the source is now Coinbase.
+ * DATASET_LABELS), kept from when only Binance filled it; each entry says whether Coinbase or
+ * Binance quoted it.
  */
 
 /**
@@ -25,7 +25,7 @@ import type { DashboardToken } from "../../types/token.ts";
  * 7-day change computed server-side from `p` against a 7-day opening price. The
  * Coinbase route does not send `c7`, so rows keep their stored 7-day change.
  */
-export type LivePriceEntry = { p: number; c: number; c7?: number };
+export type LivePriceEntry = { p: number; c: number; c7?: number; /** which exchange quoted it */ s?: "coinbase" | "binance" };
 export type LivePriceResponse = { asOf: string; prices: Record<string, LivePriceEntry> };
 
 /**
@@ -45,13 +45,6 @@ export const LIVE_PRICE_POLL_MS = 7_000;
  * which carries its own honest "as of" timestamp.
  */
 export const LIVE_PRICE_MAX_AGE_MS = 60_000;
-
-/** Canonical token id for each quoted Coinbase product (the inverse of coinbaseProducts). */
-const tokenIdBySymbol = new Map(Object.entries(coinbaseProducts).map(([tokenId, symbol]) => [symbol, tokenId]));
-
-export function tokenIdForSymbol(symbol: string): string | undefined {
-  return tokenIdBySymbol.get(symbol);
-}
 
 /**
  * Overlays live prices onto the server-rendered rows.
@@ -76,8 +69,8 @@ export function applyLivePrices(
   const collectedAt = new Date(asOf).toISOString();
   let changed = false;
   const next = tokens.map((token) => {
-    const symbol = coinbaseProducts[token.id];
-    const live = symbol ? response.prices[symbol] : undefined;
+    // The route keys prices by canonical token id: the exchange mapping is resolved server-side.
+    const live = response.prices[token.id];
     if (!live || !Number.isFinite(live.p) || !Number.isFinite(live.c)) return token;
     // c7 is supplementary: a missing or unusable one leaves the stored 7-day change alone.
     const live7d = Number.isFinite(live.c7) ? (live.c7 as number) : null;
@@ -89,7 +82,9 @@ export function applyLivePrices(
     const source = {
       providerId: "binance" as const,
       collectedAt,
-      note: "Coinbase spot last trade, USD-quoted, polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average.",
+      note: live.s === "binance"
+        ? "Binance spot last trade, USDT-quoted (a USD proxy, not USD), polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average."
+        : "Coinbase spot last trade, USD-quoted, polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average.",
     };
     /**
      * Market cap is price x circulating supply, and supply does not move in seconds, so a

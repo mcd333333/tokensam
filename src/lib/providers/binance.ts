@@ -222,7 +222,7 @@ async function fetchTickerBatch(
 export const BINANCE_PRICE_NOTE =
   "Binance spot last trade, USDT-quoted (a USD proxy, not USD). Single-venue price for the fungible asset, not a cross-venue average and not specific to this token's chain deployment.";
 
-const BINANCE_CHANGE_NOTE =
+export const BINANCE_CHANGE_NOTE =
   "Binance spot 24-hour price change for this symbol's rolling window, from the same ticker as the live price. Single-venue, USDT-quoted.";
 
 function observation(
