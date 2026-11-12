@@ -310,6 +310,9 @@ test("a profile builds its DEX Markets and concentration from the stored DexPapr
   for (const id of ["dex_liquidity", "dex_volume", "dex_pool_count", "dex_price_change_24h", "dex_price_change_6h", "dex_price_range_24h", "dex_volume_7d"]) assert.ok(cardIds.includes(id), `${id} card shown`);
   assert.ok(!cardIds.includes("dex_volume_30d"), "an absent data point shows no card");
   assert.deepEqual(model.dexMarkets.pools.map((pool) => pool.dexLabel), ["Uniswap V3", "Sushiswap"]);
+  assert.deepEqual(model.dexMarkets.groups.map((group) => [group.label, group.pools, Math.round(group.sharePct)]), [["Uniswap V3", 1, 90], ["Sushiswap", 1, 10]], "DEX boxes are ordered by liquidity with their share of the stored pools");
+  assert.equal(model.dexMarkets.groups[0].liquidity, "$9M");
+  assert.equal(model.dexMarkets.groupedPools, 2);
   const hhi = data.technicalIndicators?.groups.flatMap((group) => group.indicators ?? []).find((item) => item.id === "pool_concentration_hhi");
   assert.ok(hhi, "the pool concentration indicator is built from the snapshot");
   assert.deepEqual(hhi.provenance.providers, ["dexpaprika"]);
@@ -324,6 +327,8 @@ test("a token with more than 30 stored pools lists the 30 most liquid and counts
   const model = buildProfileModel(data);
   assert.equal(model.dexMarkets.pools.length, 30);
   assert.equal(model.dexMarkets.morePools, 15);
+  assert.equal(model.dexMarkets.groups.length, 1, "45 pools on one DEX are one box");
+  assert.equal(model.dexMarkets.groups[0].pools, 45, "the box counts every stored pool, not just the listed 30");
   assert.equal(data.onchainMarkets.volume24hUsd, 4_500, "volume is DexPaprika's token-wide figure");
 });
 

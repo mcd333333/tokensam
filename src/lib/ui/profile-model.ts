@@ -22,6 +22,8 @@ export type SupplyComposition = { circulatingPct: number; remainingPct: number; 
 /** One on-chain pool row for the DEX Markets pool list. */
 /** Pool rows listed on the profile; the rest are summarised as "N more pools". */
 export const MAX_POOLS_LISTED = 30;
+/** One decentralised exchange (DEX) box: its pools' combined liquidity and 24h volume for this token, among the stored pools. */
+export type DexGroupRow = { id: string; label: string; liquidity: string | null; volume24h: string | null; sharePct: number; pools: number };
 export type PoolRow = { id: string; dexLabel: string; pairAddress: string; liquidity: string | null; volume24h: string | null };
 /** One exchange row: its name, share of its group's listed volume and its 24h volume for this token. */
 export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number; logo: string | null };
@@ -39,7 +41,7 @@ export type ProfileModel = {
     | { available: false; note: SectionNote };
   marketStructure: { available: true; scopeLine: string; cards: Card[] } | { available: false; note: SectionNote };
   /** On-chain DEX pools (DexPaprika, up to 100 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
-  dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; pools: PoolRow[]; /** pools stored beyond the rows listed */ morePools: number } | { available: false; note: SectionNote };
+  dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; groups: DexGroupRow[]; /** pools the DEX boxes cover (the most liquid stored pools) */ groupedPools: number; pools: PoolRow[]; /** pools stored beyond the rows listed */ morePools: number } | { available: false; note: SectionNote };
   /** Exchange listings (centralised and decentralised) with each exchange's own 24h volume (daily snapshot); omitted when none is stored. */
   exchanges: { available: true; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
   /** Network + exact contract address for this token's on-chain identity. */
@@ -285,12 +287,34 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           liquidity: formatUsd(pool.liquidityUsd, true),
           volume24h: formatUsd(pool.volume24hUsd, true),
         }));
+      const byDex = new Map<string, { label: string; liquidity: number; volume: number; hasLiquidity: boolean; hasVolume: boolean; pools: number }>();
+      for (const pool of ranked) {
+        const key = pool.dexId ?? "unknown";
+        const entry = byDex.get(key) ?? { label: pool.dexId ? humanizeDexId(pool.dexId) : "Unknown DEX", liquidity: 0, volume: 0, hasLiquidity: false, hasVolume: false, pools: 0 };
+        if (pool.liquidityUsd !== null) { entry.liquidity += pool.liquidityUsd; entry.hasLiquidity = true; }
+        if (pool.volume24hUsd !== null) { entry.volume += pool.volume24hUsd; entry.hasVolume = true; }
+        entry.pools += 1;
+        byDex.set(key, entry);
+      }
+      const totalLiquidity = [...byDex.values()].reduce((sum, entry) => sum + entry.liquidity, 0);
+      const groups: DexGroupRow[] = [...byDex.entries()]
+        .sort((a, b) => b[1].liquidity - a[1].liquidity || b[1].volume - a[1].volume)
+        .map(([key, entry]) => ({
+          id: key,
+          label: entry.label,
+          liquidity: entry.hasLiquidity ? formatUsd(entry.liquidity, true) : null,
+          volume24h: entry.hasVolume ? formatUsd(entry.volume, true) : null,
+          sharePct: totalLiquidity > 0 ? (entry.liquidity / totalLiquidity) * 100 : 0,
+          pools: entry.pools,
+        }));
       dexMarkets = cards.length > 0 || pools.length > 0
         ? {
           available: true,
           scopeLine: "On-chain DEX pools for this exact token address, across every decentralized exchange it was found on.",
           cards,
           dexes: onchain.dexes.map(humanizeDexId),
+          groups,
+          groupedPools: ranked.length,
           pools,
           morePools: Math.max(0, ranked.length - pools.length),
         }

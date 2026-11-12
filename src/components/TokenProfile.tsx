@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { LiveTokenProfileData } from "@/types/token";
-import { buildProfileModel, type Card, type ExchangeRow, type PoolRow } from "@/lib/ui/profile-model";
+import { buildProfileModel, type Card, type DexGroupRow, type ExchangeRow, type PoolRow } from "@/lib/ui/profile-model";
 import { buildProfilePayload, formatProfilePayloadText } from "@/lib/analysis/profile-payload";
 import { formatChange, formatUsd, shortAddress } from "@/lib/ui/format";
 import { HistoryCharts } from "@/components/HistoricalSection";
@@ -72,6 +72,26 @@ function PoolList({ pools }: { pools: PoolRow[] }) {
           <span className="pool-figures">
             {pool.liquidity ? <span><small>Liquidity</small>{pool.liquidity}</span> : null}
             {pool.volume24h ? <span><small>Volume · 24h</small>{pool.volume24h}</span> : null}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Compact boxes, one per DEX: combined liquidity and 24h volume of its pools for this token, and its share of liquidity. */
+function DexGroupGrid({ groups }: { groups: DexGroupRow[] }) {
+  return (
+    <ul className="exchange-grid">
+      {groups.map((group) => (
+        <li key={group.id} className="exchange-box" title={`${group.label} · ${group.pools} pool${group.pools === 1 ? "" : "s"}`}>
+          <span className="exchange-head">
+            <TokenLogo src={null} symbol={group.label} size={22} />
+            <span className="exchange-name">{group.label}</span>
+          </span>
+          <b className="exchange-volume">{group.liquidity ?? "—"}<small> pool liquidity</small></b>
+          <span className="exchange-meta">
+            {group.volume24h ? `${group.volume24h} vol · 24h · ` : ""}{group.sharePct >= 0.1 ? `${group.sharePct.toFixed(1)}%` : "<0.1%"} · {group.pools} {group.pools === 1 ? "pool" : "pools"}
           </span>
         </li>
       ))}
@@ -290,11 +310,20 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
           <SectionHead eyebrow="On-chain DEX pools" title="DEX Markets" id="dex-markets-title" />
           <p className="scope-line">{dexMarkets.scopeLine}</p>
           {dexMarkets.cards.length > 0 ? <div className="tile-grid tile-grid-3">{dexMarkets.cards.map((item) => <Tile key={item.id} item={item} />)}</div> : null}
-          {dexMarkets.dexes.length > 0 ? (
-            <p className="scope-line">DEXs: {dexMarkets.dexes.map((dex) => <span key={dex} className="chip chip-quiet">{dex}</span>)}</p>
+          {dexMarkets.groups.length > 0 ? (
+            <div>
+              <h3>Decentralised exchanges<small>{dexMarkets.groups.length} found · across the {dexMarkets.groupedPools} most liquid pools</small></h3>
+              <DexGroupGrid groups={dexMarkets.groups} />
+              <p className="scope-line">Pool figures are each pool&apos;s total value locked and trading volume, counting both sides of every pair, so they can differ from the token-side totals above.</p>
+            </div>
           ) : null}
-          <PoolList pools={dexMarkets.pools} />
-          {dexMarkets.morePools > 0 ? <p className="scope-line">+ {dexMarkets.morePools} more pools with smaller liquidity, included in the totals above.</p> : null}
+          {dexMarkets.pools.length > 0 ? (
+            <details className="pool-details">
+              <summary>Individual pools ({dexMarkets.pools.length}{dexMarkets.morePools > 0 ? ` of ${dexMarkets.groupedPools}` : ""})</summary>
+              <PoolList pools={dexMarkets.pools} />
+              {dexMarkets.morePools > 0 ? <p className="scope-line">+ {dexMarkets.morePools} more pools with smaller liquidity, included in the DEX boxes above.</p> : null}
+            </details>
+          ) : null}
         </section>
       ) : null}
 
