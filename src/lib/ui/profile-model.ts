@@ -43,7 +43,7 @@ export type ProfileModel = {
   /** On-chain DEX pools (DexPaprika, up to 100 per token): pool-level data (DEX, pool, liquidity, volume), distinct from the trading aggregate above. */
   dexMarkets: { available: true; scopeLine: string; cards: Card[]; dexes: string[]; groups: DexGroupRow[]; /** pools the DEX boxes cover (the most liquid stored pools) */ groupedPools: number; pools: PoolRow[]; /** pools stored beyond the rows listed */ morePools: number } | { available: false; note: SectionNote };
   /** Exchange listings (centralised and decentralised) with each exchange's own 24h volume (daily snapshot); omitted when none is stored. */
-  exchanges: { available: true; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
+  exchanges: { available: true; eyebrow: string; scopeLine: string; groups: ExchangeGroup[]; asOf: string } | { available: false };
   /** Network + exact contract address for this token's on-chain identity. */
   onchainIdentity: { available: true; network: string; contractAddress: string } | { available: false; note: SectionNote };
   tokenomics: { available: true; items: Card[]; circulatingOfMaxPct: number | null; composition: SupplyComposition | null } | { available: false; note: SectionNote };
@@ -340,8 +340,11 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
   // day), split into centralised and decentralised venues. This covers every token, unlike DEX Markets
   // above, which needs an on-chain address mapping and shows individual pools.
   const exchangeData = data.exchangeVolumes;
+  // A token with a DEX Markets section already has its decentralised venues there (on-chain, every pool, fresher), so
+  // this section lists centralised exchanges only; CoinGecko's decentralised list stays for tokens without that section.
+  const kinds = dexMarkets.available ? (["cex"] as const) : (["cex", "dex"] as const);
   const exchangeGroups: ExchangeGroup[] = exchangeData
-    ? (["cex", "dex"] as const).flatMap((kind) => {
+    ? kinds.flatMap((kind) => {
       const items = exchangeData.exchanges.filter((item) => item.kind === kind);
       if (items.length === 0) return [];
       const total = items.reduce((sum, item) => sum + item.volumeUsd, 0);
@@ -363,7 +366,10 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
   const exchanges: ProfileModel["exchanges"] = exchangeData && exchangeGroups.length > 0
     ? {
       available: true,
-      scopeLine: "Where this token trades, with its own 24-hour trading volume on each exchange, split into centralised and decentralised venues. Updated daily; shares are within each group.",
+      eyebrow: dexMarkets.available ? "Centralised exchanges" : "Centralised & decentralised exchanges",
+      scopeLine: dexMarkets.available
+        ? "Centralised exchanges where this token trades, with its own 24-hour trading volume on each. Updated daily; shares are within this group. Decentralised venues are in DEX Markets."
+        : "Where this token trades, with its own 24-hour trading volume on each exchange, split into centralised and decentralised venues. Updated daily; shares are within each group.",
       groups: exchangeGroups,
       asOf: exchangeData.fetchedAt,
     }

@@ -412,6 +412,32 @@ test("logo aliases only name real, distinct CoinGecko ids, and ids match exactly
   for (const [dexId, geckoId] of Object.entries(dexLogoAliases)) assert.notEqual(dexId, geckoId);
 });
 
+test("Exchanges lists centralised venues only when DEX Markets covers the token; the decentralised list stays otherwise", async () => {
+  const exchanges = [
+    { id: "binance", name: "Binance", kind: "cex", volumeUsd: 900, pairs: 1 },
+    { id: "uniswap_v3", name: "Uniswap V3 (Ethereum)", kind: "dex", volumeUsd: 100, pairs: 1 },
+  ];
+  const seed = (token) => ({
+    tokens: [{ id: token.id, name: token.name, symbol: token.symbol, chain_id: token.chainId, contract_address: token.contractAddress, is_native: token.isNative, category: token.category, description: token.identityNote }],
+    chains: [{ id: token.chainId, name: token.chainName }],
+    token_exchange_volumes: [{ token_id: token.id, fetched_at: NOW_ISO, exchanges }],
+  });
+  // A token with stored pools (DEX Markets available).
+  const withDex = canonicalTokens.find((candidate) => candidate.id === dexPoolAssets[7].tokenId);
+  const dexSeed = { ...seed(withDex), token_dex_pools: [{ token_id: withDex.id, pools_at: NOW_ISO, pools: [{ pairAddress: "0x1", dexId: "uniswap_v3", dexName: "Uniswap V3", liquidityUsd: 5, volume24hUsd: 5 }] } ] };
+  const covered = buildProfileModel(await getLiveTokenProfile(withDex.id, createFakeSupabase({ seed: dexSeed }).client));
+  assert.equal(covered.dexMarkets.available, true);
+  assert.deepEqual(covered.exchanges.groups.map((group) => group.kind), ["cex"]);
+  assert.equal(covered.exchanges.eyebrow, "Centralised exchanges");
+  assert.match(covered.exchanges.scopeLine, /Decentralised venues are in DEX Markets/);
+  // A token with no on-chain identity (a native asset): CoinGecko's decentralised list is all it has.
+  const native = canonicalTokens.find((candidate) => candidate.isNative && !onchainIdentityFor(candidate.id));
+  const bare = buildProfileModel(await getLiveTokenProfile(native.id, createFakeSupabase({ seed: seed(native) }).client));
+  assert.equal(bare.dexMarkets.available, false);
+  assert.deepEqual(bare.exchanges.groups.map((group) => group.kind), ["cex", "dex"]);
+  assert.equal(bare.exchanges.eyebrow, "Centralised & decentralised exchanges");
+});
+
 let failures = 0;
 for (const { name, run } of cases) {
   try { await run(); console.log(`PASS ${name}`); }

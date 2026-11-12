@@ -329,7 +329,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
 
       {exchanges.available ? (
         <section className="profile-section" id="exchanges" aria-labelledby="exchanges-title">
-          <SectionHead eyebrow="Centralised &amp; decentralised exchanges" title="Exchanges" id="exchanges-title" />
+          <SectionHead eyebrow={exchanges.eyebrow} title="Exchanges" id="exchanges-title" />
           <p className="scope-line">{exchanges.scopeLine}</p>
           {exchanges.groups.map((group) => (
             <div key={group.kind}>
