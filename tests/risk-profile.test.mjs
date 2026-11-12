@@ -63,13 +63,19 @@ test("6. missing, null, zero, negative and non-finite prices are skipped, never 
   assert.deepEqual(values(profile.drawdown).map((v) => Math.round(v)), [0, -20]);
 });
 
-test("gaps are never bridged: volatility resets its expanding warm-up after a missing hour", () => {
-  const points = hourly(Array.from({ length: 20 }, (_, i) => 100 + i)).filter((_, i) => i !== 10);
-  const risk = rollingVolatility(points);
-  assert.ok(risk.length > 0);
-  const afterGap = risk.filter((point) => Date.parse(point.timestamp) > Date.parse(points[9].timestamp));
-  assert.ok(afterGap.length > 0);
-  assert.ok(Date.parse(afterGap[0].timestamp) - Date.parse(points[9].timestamp) >= 2 * HOUR, "post-gap volatility needs two consecutive returns");
+test("a single missing hour no longer restarts volatility; a hole longer than 3 hours still does", () => {
+  const prices = Array.from({ length: 40 }, (_, i) => 100 + Math.sin(i / 3) * 4);
+  const full = hourly(prices);
+  const oneMissing = full.filter((_, i) => i !== 20);
+  const risk = rollingVolatility(oneMissing);
+  const afterGap = risk.filter((point) => Date.parse(point.timestamp) > Date.parse(full[19].timestamp));
+  assert.equal(afterGap.length, oneMissing.length - 20, "the series continues straight through the missing hour (no new warm-up)");
+  // The 2-hour return is scaled by 1/sqrt(2), so no step in volatility from the gap alone.
+  const jump = Math.abs(afterGap[0].valueUsd - risk.find((point) => point.timestamp === full[19].timestamp).valueUsd);
+  assert.ok(jump < 25, `no spike at the gap (${jump})`);
+  const longHole = full.filter((_, i) => i < 15 || i >= 20);
+  const resumed = rollingVolatility(longHole).filter((point) => Date.parse(point.timestamp) > Date.parse(full[14].timestamp));
+  assert.ok(Date.parse(resumed[0].timestamp) - Date.parse(full[14].timestamp) >= 6 * HOUR, "a 5-hour hole restarts the warm-up (two consecutive returns needed)");
 });
 
 test("7. chronological order: drawdown sorts by time; risk samples normalize to UTC hourly boundaries", () => {

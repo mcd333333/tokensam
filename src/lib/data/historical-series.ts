@@ -150,40 +150,38 @@ export function hourlyRiskSamples(points: HistoricalPoint[], asOf: Date): Histor
     }));
 }
 
+/** A missing hour or two is common in the stored history; longer holes still restart the calculation. */
+export const RISK_MAX_GAP_HOURS = 3;
+
 /**
  * Rolling annualized volatility from hourly log returns:
  *
- *   r_i = ln(price_i / price_{i-1})
+ *   r_i = ln(price_i / price_{i-1}) / sqrt(h_i)     (h_i = hours between the two prices, normally 1)
  *   sigma = sample standard deviation of the available returns, capped at 168
- *           hourly returns (7 days)
+ *           returns (7 days)
  *   volatility = sigma * sqrt(24 * 365) * 100
  *
- * The warm-up uses an expanding consecutive run until 168 returns are available.
- * After a missing hour, the run resets; no gap is ever bridged or interpolated.
+ * Dividing by sqrt(h_i) puts a return that spans a short gap (up to RISK_MAX_GAP_HOURS) on the same per-hour footing as the
+ * rest, so one missing hour no longer restarts the window; no price is interpolated or invented. The warm-up is an expanding
+ * run of consecutive returns until 168 are available. A gap longer than RISK_MAX_GAP_HOURS resets the run.
  */
 export function rollingVolatility(hourly: HistoricalPoint[], windowHours = RISK_VOLATILITY_HOURS): HistoricalPoint[] {
   const out: HistoricalPoint[] = [];
   const times = hourly.map((point) => Date.parse(point.timestamp));
-  let consecutiveReturns = 0;
+  let run: number[] = [];
 
   for (let t = 1; t < hourly.length; t += 1) {
-    if (times[t] - times[t - 1] !== RISK_HOUR_MS) {
-      consecutiveReturns = 0;
+    const hours = (times[t] - times[t - 1]) / RISK_HOUR_MS;
+    if (!Number.isInteger(hours) || hours < 1 || hours > RISK_MAX_GAP_HOURS) {
+      run = [];
       continue;
     }
+    run.push(Math.log(hourly[t].valueUsd / hourly[t - 1].valueUsd) / Math.sqrt(hours));
+    if (run.length > windowHours) run.shift();
+    if (run.length < 2) continue;
 
-    consecutiveReturns += 1;
-    const returnCount = Math.min(windowHours, consecutiveReturns);
-    if (returnCount < 2) continue;
-
-    const start = t - returnCount;
-    const returns = hourly
-      .slice(start, t + 1)
-      .slice(1)
-      .map((point, i) => Math.log(point.valueUsd / hourly[start + i].valueUsd));
-
-    const mean = returns.reduce((sum, r) => sum + r, 0) / returns.length;
-    const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / (returns.length - 1);
+    const mean = run.reduce((sum, r) => sum + r, 0) / run.length;
+    const variance = run.reduce((sum, r) => sum + (r - mean) ** 2, 0) / (run.length - 1);
     const value = Math.sqrt(variance) * Math.sqrt(24 * 365) * 100;
     if (Number.isFinite(value)) {
       out.push({ timestamp: hourly[t].timestamp, valueUsd: value, sourceId: hourly[t].sourceId });
