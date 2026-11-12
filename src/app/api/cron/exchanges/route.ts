@@ -1,6 +1,6 @@
 import { createSupabaseAdminClient } from "../../../../lib/supabase/admin.ts";
 import { isAuthorizedRefreshRequest } from "../../../../lib/refresh/auth.ts";
-import { DEFAULT_MONTHLY_CALL_CAP, runExchangeCollection } from "../../../../lib/providers/run-exchange-collection.ts";
+import { DEFAULT_MONTHLY_CALL_CAP, runExchangeCollection, runExchangeLogoPull } from "../../../../lib/providers/run-exchange-collection.ts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -35,11 +35,15 @@ export async function GET(request: Request): Promise<Response> {
   const maxTokens = Math.min(positiveInteger(url.searchParams.get("slice")) ?? DEFAULT_SLICE, MAX_SLICE);
   const monthlyCap = positiveInteger(process.env.COINGECKO_EXCHANGE_MONTHLY_CALL_CAP) ?? DEFAULT_MONTHLY_CALL_CAP;
   try {
-    const result = await runExchangeCollection(createSupabaseAdminClient(), {
+    const client = createSupabaseAdminClient();
+    // One-time (then monthly) pull of every exchange logo; a no-op on almost every tick.
+    const logoPull = await runExchangeLogoPull(client);
+    if (logoPull.status !== "skipped") console.log(`[exchanges] logo pull ${logoPull.status}: ${logoPull.stored ?? 0} stored, ${logoPull.calls ?? 0} calls${logoPull.error ? `, ${logoPull.error}` : ""}.`);
+    const result = await runExchangeCollection(client, {
       maxTokens, monthlyCap, deadlineAt: Date.now() + BUDGET_MS,
     });
     console.log(`[exchanges] ${result.succeeded}/${result.attempted} ok, ${result.failed} failed, stopped: ${result.stoppedReason}, ${result.callsThisMonth}/${result.monthlyCap} calls this month, ${result.dueRemaining} due.`);
-    return Response.json({ status: result.failed > 0 && result.succeeded === 0 ? "failed" : "ok", ...result }, { status: result.failed > 0 && result.succeeded === 0 ? 500 : 200 });
+    return Response.json({ status: result.failed > 0 && result.succeeded === 0 ? "failed" : "ok", logoPull, ...result }, { status: result.failed > 0 && result.succeeded === 0 ? 500 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error.";
     console.error(`[exchanges] failed: ${message}`);

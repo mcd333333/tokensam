@@ -232,6 +232,7 @@ export function createFakeSupabase({ seed = {}, views = true, missingTables = []
         .filter((row) => pairs.has(`${row.provider_id}|${row.metric_id}`));
     },
     record_quota_usage: () => null,
+    bump_coingecko_exchange_call_usage: () => 1,
     touch_calculated_metric_observations: ({ p_ids, p_calculated_at }) => {
       let touched = 0;
       for (const row of rowsOf("calculated_metric_observations")) {

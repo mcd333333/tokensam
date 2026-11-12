@@ -764,28 +764,37 @@ export async function readDexPools(
   }
 }
 
-/** CoinGecko exchange id -> logo, from the stored exchange snapshots of every token. Cached for 6 hours (it rarely changes). */
+/**
+ * CoinGecko exchange id -> logo. The `exchange_logos` table (CoinGecko's whole exchange list, pulled once) is the source;
+ * logos already stored in per-token exchange snapshots fill any gap. Cached for 6 hours (it rarely changes).
+ */
 const readExchangeLogoMap = memoizeWithTtl(
   async (client: SupabaseAdminClient): Promise<Map<string, string>> => {
     const logos = new Map<string, string>();
+    const keep = (id: unknown, logo: unknown) => {
+      if (typeof id === "string" && typeof logo === "string" && logo.startsWith("https://") && !logos.has(id)) logos.set(id, logo);
+    };
+    try {
+      const { data, error } = await client.from("exchange_logos").select("id,logo");
+      if (error) throw error;
+      for (const row of (data ?? []) as { id: string; logo: string }[]) keep(row.id, row.logo);
+    } catch (error) {
+      console.error("Exchange logo table read failed (falling back to stored snapshots):", error);
+    }
     try {
       const { data, error } = await client.from("token_exchange_volumes").select("exchanges");
       if (error) throw error;
       for (const row of (data ?? []) as { exchanges?: unknown }[]) {
         if (!Array.isArray(row.exchanges)) continue;
-        for (const item of row.exchanges as Record<string, unknown>[]) {
-          if (item?.kind === "dex" && typeof item.id === "string" && typeof item.logo === "string" && item.logo.startsWith("https://") && !logos.has(item.id)) {
-            logos.set(item.id, item.logo);
-          }
-        }
+        for (const item of row.exchanges as Record<string, unknown>[]) keep(item?.id, item?.logo);
       }
     } catch (error) {
-      console.error("Exchange logo lookup failed (DEX boxes show no logos):", error);
+      console.error("Exchange snapshot logo lookup failed:", error);
     }
     return logos;
   },
   6 * 60 * 60 * 1000,
-  () => "dex-logos",
+  () => "exchange-logos",
 );
 
 /** Logo URL for each DEX id among these pools, by exact CoinGecko id or a listed alias; DEXes with no match get none. */
@@ -815,6 +824,11 @@ export async function readExchangeVolumes(
     const exchanges = (row.exchanges as Record<string, unknown>[])
       .filter((item) => typeof item?.id === "string" && typeof item?.name === "string" && typeof item?.volumeUsd === "number")
       .map((item) => ({ id: item.id as string, name: item.name as string, kind: (item.kind === "dex" ? "dex" : "cex") as "cex" | "dex", volumeUsd: item.volumeUsd as number, pairs: typeof item.pairs === "number" ? item.pairs : 0, logo: typeof item.logo === "string" && item.logo.startsWith("https://") ? item.logo : null }));
+    // An exchange stored without a logo (a snapshot from before logos were collected) borrows it from the logo list.
+    if (exchanges.some((item) => !item.logo)) {
+      const map = await readExchangeLogoMap(client);
+      for (const item of exchanges) if (!item.logo) item.logo = map.get(item.id) ?? null;
+    }
     return { fetchedAt: row.fetched_at, exchanges };
   } catch (error) {
     console.error(`Exchange volume read failed for ${tokenId} (section omitted):`, error);

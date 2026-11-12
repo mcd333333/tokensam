@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 
 import { aggregateExchangeVolumes, fetchExchangeVolumes } from "../src/lib/providers/coingecko-exchanges.ts";
-import { DEFAULT_MONTHLY_CALL_CAP, EXCHANGE_REFRESH_AFTER_MS, runExchangeCollection } from "../src/lib/providers/run-exchange-collection.ts";
+import { fetchAllExchangeLogos, normalizeExchangeLogos } from "../src/lib/providers/coingecko-exchange-logos.ts";
+import { DEFAULT_MONTHLY_CALL_CAP, EXCHANGE_LOGO_REFRESH_AFTER_MS, EXCHANGE_REFRESH_AFTER_MS, runExchangeCollection, runExchangeLogoPull } from "../src/lib/providers/run-exchange-collection.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 import { getLiveTokenProfile } from "../src/lib/data/live-data.ts";
 import { buildProfileModel } from "../src/lib/ui/profile-model.ts";
@@ -179,6 +180,38 @@ test("exchange logos are kept only when CoinGecko supplies an https URL", () => 
   assert.equal(byId.good.logo, "https://coin-images.coingecko.com/markets/images/1/small/a.png");
   assert.equal(byId.insecure.logo, undefined);
   assert.equal(byId.none.logo, undefined);
+});
+
+test("exchange logo list: https images only, pages read until a short page, every request counted", async () => {
+  assert.deepEqual(normalizeExchangeLogos([
+    { id: "a", name: "A", image: "https://x.test/a.png" }, { id: "b", name: "B", image: "http://x.test/b.png" },
+    { id: "c", name: "C" }, { name: "D", image: "https://x.test/d.png" },
+  ]), [{ id: "a", name: "A", logo: "https://x.test/a.png" }]);
+  const page = (start, count) => Array.from({ length: count }, (_, i) => ({ id: `ex${start + i}`, name: `Ex ${start + i}`, image: `https://x.test/${start + i}.png` }));
+  const requested = [];
+  let counted = 0;
+  const logos = await fetchAllExchangeLogos({
+    env: { COINGECKO_API_KEY: "k", COINGECKO_API_PLAN: "demo" }, sleep: async () => {}, onCall: async () => { counted += 1; },
+    fetchImpl: async (url) => { const n = Number(new URL(url).searchParams.get("page")); requested.push(n); return Response.json(n === 1 ? page(0, 250) : n === 2 ? page(250, 250) : page(500, 40)); },
+  });
+  assert.equal(logos.length, 540);
+  assert.deepEqual(requested, [1, 2, 3], "stops at the first short page");
+  assert.equal(counted, 3);
+});
+
+test("the logo pull runs once, then only when the list is a month old", async () => {
+  const fetchLogos = async ({ onCall }) => { await onCall(); return [{ id: "uniswap_v3", name: "Uniswap V3 (Ethereum)", logo: "https://x.test/u.png" }, { id: "orca", name: "Orca", logo: "https://x.test/o.png" }]; };
+  const db = createFakeSupabase();
+  const now = new Date("2026-11-12T12:00:00Z");
+  const first = await runExchangeLogoPull(db.client, { now, fetchLogos });
+  assert.deepEqual([first.status, first.stored, first.calls], ["pulled", 2, 1]);
+  assert.equal(db.rows("exchange_logos").length, 2);
+  assert.equal((await runExchangeLogoPull(db.client, { now: new Date(now.getTime() + 60_000), fetchLogos })).status, "skipped", "a fresh list is not pulled again");
+  const later = await runExchangeLogoPull(db.client, { now: new Date(now.getTime() + EXCHANGE_LOGO_REFRESH_AFTER_MS + 1), fetchLogos });
+  assert.equal(later.status, "pulled");
+  assert.equal(db.rows("exchange_logos").length, 2, "upserted by id, not duplicated");
+  const empty = await runExchangeLogoPull(createFakeSupabase().client, { now, fetchLogos: async () => [] });
+  assert.equal(empty.status, "failed");
 });
 
 let failures = 0;

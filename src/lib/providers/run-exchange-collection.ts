@@ -1,5 +1,6 @@
 import { fetchExchangeVolumes, EXCHANGE_REQUEST_INTERVAL_MS } from "./coingecko-exchanges.ts";
 import { CoinGeckoApiError } from "./coingecko.ts";
+import { fetchAllExchangeLogos } from "./coingecko-exchange-logos.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
 
@@ -101,4 +102,47 @@ export async function runExchangeCollection(
   }
   result.callsThisMonth = callsThisMonth;
   return result;
+}
+
+/** The logo list is pulled again only when it is missing or older than this. */
+export const EXCHANGE_LOGO_REFRESH_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+export type ExchangeLogoPullResult = { status: "skipped" | "pulled" | "failed"; stored?: number; calls?: number; error?: string };
+
+/**
+ * One pull of CoinGecko's whole exchange list (about four calls) into `exchange_logos`: when the table is empty or its
+ * newest row is older than EXCHANGE_LOGO_REFRESH_AFTER_MS. Each request is counted against the same monthly call usage as
+ * the tickers collector. Never throws: a failure is reported and the next tick tries again.
+ */
+export async function runExchangeLogoPull(
+  client: SupabaseAdminClient,
+  options: { now?: Date; fetchLogos?: typeof fetchAllExchangeLogos; force?: boolean } = {},
+): Promise<ExchangeLogoPullResult> {
+  const now = options.now ?? new Date();
+  const month = now.toISOString().slice(0, 7);
+  try {
+    if (!options.force) {
+      const { data, error } = await client.from("exchange_logos").select("fetched_at").order("fetched_at", { ascending: false }).limit(1);
+      if (error) throw new Error(`Supabase read exchange logos failed: ${error.message}`);
+      const newest = Date.parse((data as { fetched_at?: string }[] | null)?.[0]?.fetched_at ?? "");
+      if (Number.isFinite(newest) && now.getTime() - newest < EXCHANGE_LOGO_REFRESH_AFTER_MS) return { status: "skipped" };
+    }
+    let calls = 0;
+    const logos = await (options.fetchLogos ?? fetchAllExchangeLogos)({
+      onCall: async () => {
+        calls += 1;
+        const { error } = await client.rpc("bump_coingecko_exchange_call_usage", { p_month: month, p_calls: 1 });
+        if (error) throw new Error(`Supabase record exchange call usage failed: ${error.message}`);
+      },
+    });
+    if (logos.length === 0) return { status: "failed", calls, error: "CoinGecko returned no exchange logos." };
+    const stamp = now.toISOString();
+    for (let offset = 0; offset < logos.length; offset += 500) {
+      const { error } = await client.from("exchange_logos").upsert(logos.slice(offset, offset + 500).map((item) => ({ ...item, fetched_at: stamp })), { onConflict: "id" });
+      if (error) throw new Error(`Supabase write exchange logos failed: ${error.message}`);
+    }
+    return { status: "pulled", stored: logos.length, calls };
+  } catch (error) {
+    return { status: "failed", error: error instanceof Error ? error.message : "Unknown error." };
+  }
 }
