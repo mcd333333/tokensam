@@ -186,7 +186,7 @@ function RiskProfileCard({ data, period }: { data: TokenHistoricalData; period: 
               <Tooltip content={<RiskTooltip />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
               {(["volatility", "drawdown"] as const).map((key) => (
                 <Line
-                  key={key} type="linear" dataKey={key} name={RISK[key].label} stroke={RISK[key].color} strokeWidth={1.75}
+                  key={key} type="linear" dataKey={key} name={RISK[key].label} stroke={RISK[key].color} strokeWidth={1.75} connectNulls
                   dot={chartRows.length <= MAX_POINTS_WITH_DOTS ? { r: 2, fill: RISK[key].color, strokeWidth: 0 } : false}
                   activeDot={{ r: 3.5, fill: RISK[key].color, stroke: "#0b0b0c", strokeWidth: 1.5 }}
                   isAnimationActive={false}
