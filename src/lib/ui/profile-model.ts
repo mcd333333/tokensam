@@ -24,7 +24,7 @@ export type SupplyComposition = { circulatingPct: number; remainingPct: number; 
 export const MAX_POOLS_LISTED = 30;
 export type PoolRow = { id: string; dexLabel: string; pairAddress: string; liquidity: string | null; volume24h: string | null };
 /** One exchange row: its name, share of its group's listed volume and its 24h volume for this token. */
-export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number };
+export type ExchangeRow = { id: string; name: string; pairs: number; volume24h: string; sharePct: number; logo: string | null };
 export type ExchangeGroup = { kind: "cex" | "dex"; title: string; total: string | null; rows: ExchangeRow[] };
 export type SectionId =
   | "overview" | "market" | "fundamentals" | "tokenomics" | "market-structure" | "dex-markets" | "exchanges" | "onchain-identity"
@@ -317,6 +317,7 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
           pairs: item.pairs,
           volume24h: formatUsd(item.volumeUsd, true) ?? "—",
           sharePct: total > 0 ? (item.volumeUsd / total) * 100 : 0,
+          logo: item.logo ?? null,
         })),
       }];
     })

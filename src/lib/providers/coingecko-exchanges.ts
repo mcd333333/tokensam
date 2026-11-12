@@ -8,12 +8,12 @@ import { CoinGeckoApiError, MIN_REQUEST_INTERVAL_MS, getCoinGeckoConfig, retryAf
  */
 
 export type ExchangeKind = "cex" | "dex";
-export type ExchangeVolume = { id: string; name: string; kind: ExchangeKind; volumeUsd: number; pairs: number };
+export type ExchangeVolume = { id: string; name: string; kind: ExchangeKind; volumeUsd: number; pairs: number; /** CoinGecko-hosted exchange logo (https), when it supplies one. */ logo?: string };
 
 type RawTicker = {
   base?: unknown;
   target?: unknown;
-  market?: { name?: unknown; identifier?: unknown } | null;
+  market?: { name?: unknown; identifier?: unknown; logo?: unknown } | null;
   converted_volume?: { usd?: unknown } | null;
   is_anomaly?: unknown;
   is_stale?: unknown;
@@ -55,7 +55,9 @@ export function aggregateExchangeVolumes(tickers: unknown): ExchangeVolume[] {
     if (typeof id !== "string" || typeof name !== "string" || typeof volume !== "number" || !Number.isFinite(volume) || volume <= 0) continue;
     const kind: ExchangeKind = isCentralisedTicker(raw) ? "cex" : "dex";
     const key = `${kind}:${id}`;
+    const logo = raw.market?.logo;
     const entry = byExchange.get(key) ?? { id, name, kind, volumeUsd: 0, pairs: 0 };
+    if (!entry.logo && typeof logo === "string" && /^https:\/\//.test(logo)) entry.logo = logo;
     entry.volumeUsd += volume;
     entry.pairs += 1;
     byExchange.set(key, entry);
@@ -81,7 +83,7 @@ export async function fetchExchangeVolumes(
   const url = new URL(`${config.baseUrl}/coins/${encodeURIComponent(coinId)}/tickers`);
   url.searchParams.set("order", "volume_desc");
   url.searchParams.set("page", "1");
-  url.searchParams.set("include_exchange_logo", "false");
+  url.searchParams.set("include_exchange_logo", "true");
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     let response: Response;

@@ -773,7 +773,7 @@ export async function readExchangeVolumes(
     if (!row?.fetched_at || !Array.isArray(row.exchanges)) return null;
     const exchanges = (row.exchanges as Record<string, unknown>[])
       .filter((item) => typeof item?.id === "string" && typeof item?.name === "string" && typeof item?.volumeUsd === "number")
-      .map((item) => ({ id: item.id as string, name: item.name as string, kind: (item.kind === "dex" ? "dex" : "cex") as "cex" | "dex", volumeUsd: item.volumeUsd as number, pairs: typeof item.pairs === "number" ? item.pairs : 0 }));
+      .map((item) => ({ id: item.id as string, name: item.name as string, kind: (item.kind === "dex" ? "dex" : "cex") as "cex" | "dex", volumeUsd: item.volumeUsd as number, pairs: typeof item.pairs === "number" ? item.pairs : 0, logo: typeof item.logo === "string" && item.logo.startsWith("https://") ? item.logo : null }));
     return { fetchedAt: row.fetched_at, exchanges };
   } catch (error) {
     console.error(`Exchange volume read failed for ${tokenId} (section omitted):`, error);

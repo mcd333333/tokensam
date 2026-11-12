@@ -79,17 +79,19 @@ function PoolList({ pools }: { pools: PoolRow[] }) {
   );
 }
 
-/** One row per exchange: name, listed pair count, 24h volume and its share of the listed total. */
+/** Compact boxes, one per exchange: logo, name, 24h volume, its share of the listed total and pair count. */
 function ExchangeList({ rows }: { rows: ExchangeRow[] }) {
   return (
-    <ul className="pool-list">
+    <ul className="exchange-grid">
       {rows.map((row) => (
-        <li key={row.id} className="pool-row">
-          <span className="pool-dex chip">{row.name}</span>
-          <span className="pool-figures">
-            <span><small>Volume · 24h</small>{row.volume24h}</span>
-            <span><small>Share</small>{row.sharePct >= 0.1 ? `${row.sharePct.toFixed(1)}%` : "<0.1%"}</span>
-            <span><small>Pairs</small>{row.pairs}</span>
+        <li key={row.id} className="exchange-box" title={`${row.name} · ${row.pairs} pair${row.pairs === 1 ? "" : "s"}`}>
+          <span className="exchange-head">
+            <TokenLogo src={row.logo} symbol={row.name} size={22} />
+            <span className="exchange-name">{row.name}</span>
+          </span>
+          <b className="exchange-volume">{row.volume24h}</b>
+          <span className="exchange-meta">
+            {row.sharePct >= 0.1 ? `${row.sharePct.toFixed(1)}%` : "<0.1%"} · {row.pairs} {row.pairs === 1 ? "pair" : "pairs"}
           </span>
         </li>
       ))}

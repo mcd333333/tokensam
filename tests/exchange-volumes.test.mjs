@@ -172,6 +172,15 @@ test("profile omits the exchanges section when no snapshot is stored", async () 
   assert.ok(!model.sections.some((section) => section.id === "exchanges"));
 });
 
+test("exchange logos are kept only when CoinGecko supplies an https URL", () => {
+  const withLogo = (identifier, logo) => ({ base: "UNI", target: "USDT", market: { name: identifier, identifier, logo }, converted_volume: { usd: 1_000_000 } });
+  const rows = aggregateExchangeVolumes([withLogo("good", "https://coin-images.coingecko.com/markets/images/1/small/a.png"), withLogo("insecure", "http://x.test/a.png"), withLogo("none", undefined)]);
+  const byId = Object.fromEntries(rows.map((row) => [row.id, row]));
+  assert.equal(byId.good.logo, "https://coin-images.coingecko.com/markets/images/1/small/a.png");
+  assert.equal(byId.insecure.logo, undefined);
+  assert.equal(byId.none.logo, undefined);
+});
+
 let failures = 0;
 for (const { name, run } of cases) {
   try { await run(); console.log(`PASS ${name}`); }
