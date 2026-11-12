@@ -1,3 +1,4 @@
+import { knownTokenSymbol } from "../../data/dex-quote-tokens.ts";
 import { CoinGeckoApiError, MIN_REQUEST_INTERVAL_MS, getCoinGeckoConfig, retryAfterMs } from "./coingecko.ts";
 
 /**
@@ -8,7 +9,7 @@ import { CoinGeckoApiError, MIN_REQUEST_INTERVAL_MS, getCoinGeckoConfig, retryAf
  */
 
 export type ExchangeKind = "cex" | "dex";
-/** One trading pair on an exchange (centralised venues only: a decentralised ticker names contract addresses). */
+/** One trading pair on an exchange. Decentralised pairs appear only when both tokens are well-known ones with a symbol. */
 export type ExchangePair = { pair: string; volumeUsd: number };
 export type ExchangeVolume = { id: string; name: string; kind: ExchangeKind; volumeUsd: number; pairs: number; /** CoinGecko-hosted exchange logo (https), when it supplies one. */ logo?: string; /** The exchange's largest pairs for this token by 24h USD volume. */ pairList?: ExchangePair[] };
 
@@ -65,8 +66,16 @@ export function aggregateExchangeVolumes(tickers: unknown): ExchangeVolume[] {
     if (!entry.logo && typeof logo === "string" && /^https:\/\//.test(logo)) entry.logo = logo;
     entry.volumeUsd += volume;
     entry.pairs += 1;
-    if (kind === "cex" && typeof raw.base === "string" && typeof raw.target === "string" && raw.base.length <= 20 && raw.target.length <= 20) {
-      (entry.pairList ??= []).push({ pair: `${raw.base}/${raw.target}`, volumeUsd: Math.round(volume) });
+    if (typeof raw.base === "string" && typeof raw.target === "string") {
+      if (kind === "cex") {
+        if (raw.base.length <= 20 && raw.target.length <= 20) (entry.pairList ??= []).push({ pair: `${raw.base}/${raw.target}`, volumeUsd: Math.round(volume) });
+      } else {
+        // A decentralised ticker names both tokens by address. A pair is kept only when both are well-known tokens we can
+        // name; a pair with an unnamed side is left out rather than shown as an address.
+        const base = knownTokenSymbol(raw.base);
+        const target = knownTokenSymbol(raw.target);
+        if (base && target) (entry.pairList ??= []).push({ pair: `${base}/${target}`, volumeUsd: Math.round(volume) });
+      }
     }
     byExchange.set(key, entry);
   }

@@ -221,7 +221,12 @@ test("centralised exchanges keep their largest pairs by volume; decentralised ti
   ]);
   const binance = rows.find((row) => row.id === "binance");
   assert.deepEqual(binance.pairList, [{ pair: "UNI/USDT", volumeUsd: 600 }, { pair: "UNI/BTC", volumeUsd: 250 }, { pair: "UNI/USDC", volumeUsd: 150 }]);
-  assert.equal(rows.find((row) => row.id === "somedex").pairList, undefined);
+  assert.equal(rows.find((row) => row.id === "somedex").pairList, undefined, "UNI is not a well-known quote token, so a UNI/WETH pair has no symbol for one side and is left out");
+  const named = aggregateExchangeVolumes([
+    ticker("dex1", "Dex 1", "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", 500, { token_info_url: "https://x.test" }),
+    ticker("dex1", "Dex 1", "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0x1234567890abcdef1234567890abcdef12345678", 900, { token_info_url: "https://x.test" }),
+  ]);
+  assert.deepEqual(named[0].pairList, [{ pair: "WETH/USDC", volumeUsd: 500 }], "only pairs whose both sides have symbols");
   const many = aggregateExchangeVolumes(Array.from({ length: 12 }, (_, i) => ticker("big", "Big", "UNI", `Q${i}`, 100 + i)));
   assert.equal(many[0].pairList.length, 8, "at most 8 pairs per exchange");
   assert.equal(many[0].pairList[0].pair, "UNI/Q11");

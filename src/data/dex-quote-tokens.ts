@@ -44,6 +44,19 @@ function shortAddress(address: string): string {
   return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
 }
 
+/**
+ * Symbol of a well-known token whatever the network (an address that is not listed returns null). Used for CoinGecko's
+ * decentralised tickers, which name both sides of a pair by address without saying which network they are on; the same
+ * address on two networks (such as the OP-stack WETH) always carries the same symbol here.
+ */
+export function knownTokenSymbol(address: string): string | null {
+  for (const table of Object.values(QUOTES)) {
+    const symbol = table[address.toLowerCase()] ?? table[address];
+    if (symbol) return symbol;
+  }
+  return null;
+}
+
 /** Symbol of a well-known quote token, else the shortened address. */
 export function quoteLabel(network: string, address: string): string {
   const table = QUOTES[network] ?? {};
