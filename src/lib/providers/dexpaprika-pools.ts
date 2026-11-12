@@ -13,7 +13,7 @@ const BASE_URL = "https://api.dexpaprika.com";
 const REQUEST_TIMEOUT_MS = 15_000;
 /** Pools kept per token, most liquid first: the search's page-size maximum, so one request per token and it works keyless. */
 import { isPlausibleDexValue } from "./dex-sanity.ts";
-import { quoteLabel } from "../../data/dex-quote-tokens.ts";
+import { quoteSymbol } from "../../data/dex-quote-tokens.ts";
 
 export const MAX_POOLS_PER_TOKEN = 100;
 /** Minimum spacing between requests (30/minute with a key; the keyless 15/minute is slower and still served by retries). */
@@ -46,7 +46,7 @@ export type DexPool = {
   dexId: string | null;
   /** Display name of the DEX, e.g. "Uniswap V3". */
   dexName: string | null;
-  /** The pool's other token: a well-known symbol ("WETH") or a shortened address. */
+  /** Ticker of the pool's other token ("WETH"), when it is a well-known one. */
   quote?: string | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;
@@ -101,12 +101,12 @@ type RawPool = {
 };
 
 /** Pools in the search response, deduplicated by address, most liquid first, capped. The search is already filtered to the token. */
-/** The pool's token that is not the requested one, labelled for display; null when it cannot be told. */
+/** Ticker of the pool's token that is not the requested one; null when it has no ticker we know (an address is never shown). */
 function quoteOf(raw: RawPool, context: { network?: string; tokenAddress?: string }): string | null {
   if (!context.network || !context.tokenAddress || !Array.isArray(raw.tokens)) return null;
   const self = context.tokenAddress.toLowerCase();
   const other = raw.tokens.map((token) => (typeof token?.id === "string" ? token.id : null)).find((id): id is string => id !== null && id.toLowerCase() !== self);
-  return other ? quoteLabel(context.network, other) : null;
+  return other ? quoteSymbol(context.network, other) : null;
 }
 
 /** A per-pool figure when plausible, else null (see dex-sanity.ts). */

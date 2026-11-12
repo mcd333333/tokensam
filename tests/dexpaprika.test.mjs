@@ -439,7 +439,7 @@ test("Exchanges lists centralised venues only when DEX Markets covers the token;
   assert.equal(bare.exchanges.eyebrow, "Centralised & decentralised exchanges");
 });
 
-test("pool pairs: the other token is labelled by symbol when well known, else a shortened address", async () => {
+test("pool pairs: the other token is labelled by its ticker when well known, otherwise left out", async () => {
   const UNI = "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984";
   const pools = normalizeDexPools({ results: [
     { id: "0xp1", dex_id: "uniswap_v3", tokens: [{ id: UNI }, { id: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2" }], liquidity_usd: 9 },
@@ -447,7 +447,7 @@ test("pool pairs: the other token is labelled by symbol when well known, else a 
     { id: "0xp3", dex_id: "uniswap_v3", tokens: [{ id: UNI }, { id: "0x1234567890abcdef1234567890abcdef12345678" }], liquidity_usd: 7 },
     { id: "0xp4", dex_id: "uniswap_v3", liquidity_usd: 6 },
   ] }, { network: "ethereum", tokenAddress: UNI });
-  assert.deepEqual(pools.map((pool) => pool.quote), ["WETH", "USDC", "0x1234…5678", null]);
+  assert.deepEqual(pools.map((pool) => pool.quote), ["WETH", "USDC", null, null], "an unknown token has no ticker, so no quote is kept (never an address)");
   // The hover card lines on a DEX box: token symbol / quote, with the pool's liquidity, largest first.
   const token = dexPoolAssets[9];
   const data = await profileFor(token.tokenId, { pools_at: NOW_ISO, pools: [

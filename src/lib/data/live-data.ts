@@ -743,7 +743,8 @@ export async function readDexPools(
       pairAddress: pool.pairAddress as string,
       dexId: typeof pool.dexId === "string" ? pool.dexId : null,
       dexName: typeof pool.dexName === "string" ? pool.dexName : null,
-      quote: typeof pool.quote === "string" ? pool.quote : null,
+      // Pools stored by an earlier version may carry a shortened address here; only tickers are kept.
+      quote: typeof pool.quote === "string" && /^[A-Za-z][A-Za-z0-9.]{0,11}$/.test(pool.quote) ? pool.quote : null,
       createdAt: typeof pool.createdAt === "string" ? pool.createdAt : null,
       // Rows stored before the plausibility bounds existed are filtered here too (see dex-sanity.ts).
       liquidityUsd: plausibleDexValue("usd", numberValue(pool.liquidityUsd)),

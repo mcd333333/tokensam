@@ -117,7 +117,7 @@ export type OnchainPool = {
   dexId: string | null;
   /** DexPaprika's readable DEX name, when it supplies one. */
   dexName?: string | null;
-  /** The pool's other token (symbol or shortened address). */
+  /** Ticker of the pool's other token, when well known. */
   quote?: string | null;
   liquidityUsd: number | null;
   volume24hUsd: number | null;

@@ -312,7 +312,8 @@ export function buildProfileModel(data: LiveTokenProfileData): ProfileModel {
         if (pool.volume24hUsd !== null) { entry.volume += pool.volume24hUsd; entry.hasVolume = true; }
         entry.pools += 1;
         // Pools arrive most liquid first, so the first few are the DEX's largest pairs for this token.
-        if (entry.pairLines.length < MAX_PAIR_LINES) entry.pairLines.push({ pair: pool.quote ? `${token.symbol}/${pool.quote}` : token.symbol, figure: formatUsd(pool.liquidityUsd, true) ? `${formatUsd(pool.liquidityUsd, true)} liquidity` : null });
+        // Only pools whose other token has a ticker are listed; a pool known only by an address is not shown as a pair.
+        if (pool.quote && entry.pairLines.length < MAX_PAIR_LINES) entry.pairLines.push({ pair: `${token.symbol}/${pool.quote}`, figure: formatUsd(pool.liquidityUsd, true) ? `${formatUsd(pool.liquidityUsd, true)} liquidity` : null });
         byDex.set(key, entry);
       }
       const totalLiquidity = [...byDex.values()].reduce((sum, entry) => sum + entry.liquidity, 0);

@@ -40,10 +40,6 @@ const QUOTES: Record<string, Record<string, string>> = {
   },
 };
 
-function shortAddress(address: string): string {
-  return address.length > 12 ? `${address.slice(0, 6)}…${address.slice(-4)}` : address;
-}
-
 /**
  * Symbol of a well-known token whatever the network (an address that is not listed returns null). Used for CoinGecko's
  * decentralised tickers, which name both sides of a pair by address without saying which network they are on; the same
@@ -57,8 +53,8 @@ export function knownTokenSymbol(address: string): string | null {
   return null;
 }
 
-/** Symbol of a well-known quote token, else the shortened address. */
-export function quoteLabel(network: string, address: string): string {
+/** Symbol of a well-known quote token on this network; null when the token has no ticker we know (never an address). */
+export function quoteSymbol(network: string, address: string): string | null {
   const table = QUOTES[network] ?? {};
-  return table[address.toLowerCase()] ?? table[address] ?? shortAddress(address);
+  return table[address.toLowerCase()] ?? table[address] ?? null;
 }
