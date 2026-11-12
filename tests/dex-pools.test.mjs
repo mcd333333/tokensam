@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 
 import { MAX_POOLS_PER_TOKEN, dexPaprikaNetwork, fetchDexPools, normalizeDexPools, DexPoolApiError } from "../src/lib/providers/dexpaprika-pools.ts";
-import { DEX_POOL_REFRESH_AFTER_MS, dexPoolAssets, runDexPoolCollection } from "../src/lib/providers/run-dex-pool-collection.ts";
+import { DEX_POOL_REFRESH_AFTER_MS, dexPoolAssets, onchainIdentityFor, runDexPoolCollection } from "../src/lib/providers/run-dex-pool-collection.ts";
 import { getLiveTokenProfile } from "../src/lib/data/live-data.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 import { buildProfileModel } from "../src/lib/ui/profile-model.ts";
+import { extraOnchainMappings } from "../src/data/dexpaprika-extra-mappings.ts";
 import { createFakeSupabase } from "./support/fake-supabase.mjs";
 
 const cases = [];
@@ -140,22 +141,37 @@ test("reports none_due when everything is fresh; a lone 429 is skipped after a c
 });
 
 test("only canonical-universe tokens are collected, so every row has a token to attach to", () => {
-  assert.ok(dexPoolAssets.length > 0 && dexPoolAssets.length <= 55);
+  assert.ok(dexPoolAssets.length >= 90 && dexPoolAssets.length <= 100, "the DEX Screener-mapped tokens plus the curated extras");
   const ids = new Set(canonicalTokens.map((token) => token.id));
   for (const asset of dexPoolAssets) assert.ok(ids.has(asset.tokenId), asset.tokenId);
 });
 
 const profileFor = (tokenId, snapshot) => {
   const token = canonicalTokens.find((candidate) => candidate.id === tokenId);
-  const asset = dexPoolAssets.find((candidate) => candidate.tokenId === tokenId);
   const client = createFakeSupabase({ seed: {
     tokens: [{ id: token.id, name: token.name, symbol: token.symbol, chain_id: token.chainId, contract_address: token.contractAddress, is_native: token.isNative, category: token.category, description: token.identityNote }],
     chains: [{ id: token.chainId, name: token.chainName }],
-    provider_token_mappings: [{ provider_id: "dexscreener", token_id: tokenId, chain_id: token.chainId, external_asset_id: asset.tokenAddress, external_contract_address: asset.tokenAddress }],
     ...(snapshot ? { token_dex_pools: [{ token_id: tokenId, ...snapshot }] } : {}),
   } }).client;
   return getLiveTokenProfile(tokenId, client);
 };
+
+test("the curated extras are real, non-native, non-duplicated tokens, and their identity resolves without any database row", () => {
+  const ids = new Set(canonicalTokens.map((token) => token.id));
+  const seen = new Set();
+  for (const mapping of extraOnchainMappings) {
+    const token = canonicalTokens.find((candidate) => candidate.id === mapping.tokenId);
+    assert.ok(token, `${mapping.tokenId} is a canonical token`);
+    assert.equal(token.isNative, false, `${mapping.tokenId} is not a native asset (wrapped assets are never substituted)`);
+    assert.ok(!seen.has(mapping.tokenId), `${mapping.tokenId} is listed once`);
+    seen.add(mapping.tokenId);
+    assert.deepEqual(onchainIdentityFor(mapping.tokenId), { chainId: mapping.canonicalChainId, tokenAddress: mapping.tokenAddress });
+  }
+  const assetIds = dexPoolAssets.map((asset) => asset.tokenId);
+  assert.equal(new Set(assetIds).size, assetIds.length, "no token is collected twice");
+  assert.ok(assetIds.every((id) => ids.has(id)));
+  assert.equal(onchainIdentityFor("bitcoin-btc"), undefined, "a native asset has no on-chain identity");
+});
 
 test("a profile builds its DEX Markets and concentration from the stored DEX Screener pool snapshot", async () => {
   const [first] = dexPoolAssets;

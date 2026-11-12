@@ -1,14 +1,15 @@
 import { dexScreenerTokenMappings } from "../../data/dexscreener-token-mappings.ts";
+import { extraOnchainMappings } from "../../data/dexpaprika-extra-mappings.ts";
 import { canonicalTokens } from "../../data/canonical-tokens.ts";
 import { DEX_POOL_RATE_LIMIT_COOLDOWN_MS, DEX_POOL_REQUEST_INTERVAL_MS, DexPoolApiError, dexPaprikaNetwork, fetchDexPools } from "./dexpaprika-pools.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
 
 /**
- * A token's pool snapshot is refreshed once it is older than this. Hourly keeps the free key's 100,000-credit allowance
- * comfortable (about 55 tokens x 24 x 30 = 40,000 requests a month, if a request costs one credit).
+ * A token's pool snapshot is refreshed once it is older than this. Every 90 minutes keeps the free key's 100,000-credit allowance
+ * comfortable (about 95 tokens x 16 x 30 = 46,000 requests a month, if a request costs one credit).
  */
-export const DEX_POOL_REFRESH_AFTER_MS = 55 * 60 * 1000;
+export const DEX_POOL_REFRESH_AFTER_MS = 90 * 60 * 1000;
 
 export type DexPoolCollectionResult = {
   attempted: number;
@@ -26,14 +27,25 @@ const canonicalIds = new Set(canonicalTokens.map((token) => token.id));
  * Tokens with an exact chain/address identity (the curated DEX Screener mapping, which is also this project's on-chain identity) on a network DexPaprika indexes: the only ones that can have pools. Limited to the
  * canonical universe, because the mapping file also holds retired tokens that have no row in `tokens` to attach to.
  */
-export const dexPoolAssets = dexScreenerTokenMappings
-  .filter((mapping) => mapping.dexChainId && mapping.tokenAddress && canonicalIds.has(mapping.tokenId) && dexPaprikaNetwork(mapping.dexChainId))
-  .map((mapping) => ({
-    tokenId: mapping.tokenId,
-    chainId: mapping.dexChainId as string,
-    network: dexPaprikaNetwork(mapping.dexChainId as string) as string,
-    tokenAddress: mapping.tokenAddress as string,
-  }));
+export const dexPoolAssets = [
+  ...dexScreenerTokenMappings
+    .filter((mapping) => mapping.dexChainId && mapping.tokenAddress && canonicalIds.has(mapping.tokenId) && dexPaprikaNetwork(mapping.dexChainId))
+    .map((mapping) => ({
+      tokenId: mapping.tokenId,
+      chainId: mapping.canonicalChainId,
+      network: dexPaprikaNetwork(mapping.dexChainId as string) as string,
+      tokenAddress: mapping.tokenAddress as string,
+    })),
+  ...extraOnchainMappings
+    .filter((mapping) => canonicalIds.has(mapping.tokenId))
+    .map((mapping) => ({ tokenId: mapping.tokenId, chainId: mapping.canonicalChainId, network: mapping.network, tokenAddress: mapping.tokenAddress })),
+];
+
+/** On-chain identity (canonical chain + exact token address) for a token that has pool data, or undefined. */
+export function onchainIdentityFor(tokenId: string): { chainId: string; tokenAddress: string } | undefined {
+  const asset = dexPoolAssets.find((candidate) => candidate.tokenId === tokenId);
+  return asset ? { chainId: asset.chainId, tokenAddress: asset.tokenAddress } : undefined;
+}
 
 /**
  * Refreshes the stalest pool snapshots first (never-fetched tokens before old ones), at most `maxTokens` per

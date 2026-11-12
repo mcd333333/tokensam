@@ -3,6 +3,7 @@ import "server-only";
 import { createSupabaseAdminClient } from "../supabase/admin.ts";
 import { latestPerMetric, mergeById, readLatestObservations, readObservationWindow } from "./observation-reads.ts";
 import { readLivePrices } from "../providers/live-price-source.ts";
+import { onchainIdentityFor } from "../providers/run-dex-pool-collection.ts";
 import { COINBASE_CHANGE_NOTE, COINBASE_PRICE_NOTE } from "../providers/coinbase.ts";
 import { BINANCE_CHANGE_NOTE, BINANCE_PRICE_NOTE } from "../providers/binance.ts";
 import { memoizeWithTtl } from "./ttl-cache.ts";
@@ -735,7 +736,7 @@ type GeckoTerminalRawPool = {
  * Optional: a failed read leaves pools empty rather than failing the profile.
  */
 /**
- * Latest on-chain DEX pool snapshot for a token (DexPaprika, refreshed about hourly by
+ * Latest on-chain DEX pool snapshot for a token (DexPaprika, refreshed about every 90 minutes by
  * /api/cron/dex-pools), most liquid pool first. Optional: a failed read or a token with no snapshot yet leaves
  * the pool list empty rather than failing the profile. `primary` is the most liquid pool, which supplies the
  * price change, FDV and market cap shown with the pools.
@@ -1050,17 +1051,17 @@ async function getLiveTokenProfileUncached(
   // Market-scope counts only for a curated exact-address mapping; never from a wrapped proxy.
   const dexCount = (metricId: string) => dexMapped ? observationValue(observationFor(observations, tokenId, "dexscreener", metricId)) : null;
   const protocolMapped = coverage.some((item) => item.provider === "defillama" && item.status === "mapped");
-  // On-chain identity: network + exact contract address, from the curated on-chain address mapping (never a
-  // wrapped or ticker-matched substitute). The chain name reuses this token's own chain lookup, since the
-  // canonical chain the mapping is keyed to is always this token's own chain in the current mapping data.
+  // On-chain identity: network + exact contract address, from the curated mappings (the DEX Screener mapping plus
+  // the extra DexPaprika-only ones), never a wrapped or ticker-matched substitute. The chain name reuses this
+  // token's own chain lookup, since the canonical chain the mapping is keyed to is always this token's own chain.
   // Liquidity is the most liquid pool's, volume is summed across the stored pools, and the price change, FDV
   // and market cap are the most liquid pool's, all from the pool snapshot.
-  const onchainMapping = mappings.find((mapping) => mapping.provider_id === "dexscreener");
+  const onchainMapping = onchainIdentityFor(tokenId);
   const poolVolumes = dexPools.pools.map((pool) => pool.volume24hUsd).filter((value): value is number => value !== null);
   const onchainMarkets: OnchainMarketsData | null = onchainMapping
     ? {
-      network: onchainMapping.chain_id === tokenRow.chain_id ? (chain?.name ?? onchainMapping.chain_id) : onchainMapping.chain_id,
-      contractAddress: onchainMapping.external_contract_address,
+      network: onchainMapping.chainId === tokenRow.chain_id ? (chain?.name ?? onchainMapping.chainId) : onchainMapping.chainId,
+      contractAddress: onchainMapping.tokenAddress,
       liquidityUsd: dexPools.pools[0]?.liquidityUsd ?? null,
       volume24hUsd: poolVolumes.length > 0 ? poolVolumes.reduce((sum, value) => sum + value, 0) : null,
       priceChange24hPct: dexPools.primary?.priceChange24hPct ?? null,

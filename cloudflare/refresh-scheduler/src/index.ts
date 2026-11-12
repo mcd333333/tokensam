@@ -321,7 +321,7 @@ function refreshFinished(result: RouteResult): boolean {
  * - /api/cron/refresh: each provider's own REFRESH_POLICY interval (CoinGecko/DEX Screener
  *   15/30 min, DeFiLlama Coins 60 min, DeFiLlama 6 h, DUE_TOLERANCE_MS 2 min) decides what actually
  *   runs; a tick where nothing is due returns quickly with an empty `due` list.
- * - /api/cron/dex-pools: refreshes the stalest on-chain DEX pool snapshots (DexPaprika), 6 per tick.
+ * - /api/cron/dex-pools: refreshes the stalest on-chain DEX pool snapshots (DexPaprika), 8 per tick.
  * - /api/cron/exchanges: refreshes the stalest exchange-volume snapshots (CoinGecko tickers), under a monthly cap.
  *
  * Sequential, not parallel: the pool and exchange routes only run after `/api/cron/refresh`'s response is
@@ -363,12 +363,12 @@ async function run(env: Env): Promise<RouteResult[]> {
     }
   }
 
-  // On-chain DEX pools (DexPaprika): refreshes the stalest of the ~54 mapped tokens, 6 per tick, so the
-  // list turns over about hourly and an idle tick is a no-op. This replaced the GeckoTerminal
+  // On-chain DEX pools (DexPaprika): refreshes the stalest of the ~95 mapped tokens, 8 per tick, so the
+  // list turns over about every 90 minutes and an idle tick is a no-op. This replaced the GeckoTerminal
   // slices, which GeckoTerminal answered with HTTP 429 on ~85% of requests from Cloudflare's addresses.
   let dexPoolsResult: RouteResult | null = null;
   if (refreshFinished(refreshResult)) {
-    dexPoolsResult = await callRoute(env.REFRESH_URL, "/api/cron/dex-pools?slice=6", env.CRON_SECRET);
+    dexPoolsResult = await callRoute(env.REFRESH_URL, "/api/cron/dex-pools?slice=8", env.CRON_SECRET);
     if (dexPoolsResult.error) console.error(`refresh-scheduler: /api/cron/dex-pools request failed: ${dexPoolsResult.error}`);
     else console.log(`refresh-scheduler: /api/cron/dex-pools -> ${dexPoolsResult.status} ${dexPoolsResult.body.slice(0, 300)}`);
   } else {
