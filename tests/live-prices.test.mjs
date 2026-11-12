@@ -4,6 +4,10 @@ import { applyLivePrices, livePricesUrl, tokenIdForSymbol, DEFAULT_LIVE_PRICES_P
 import { binanceSymbols } from "../src/data/binance-token-mappings.ts";
 import { coinbaseProducts } from "../src/data/coinbase-token-mappings.ts";
 import { GET as getLivePrices } from "../src/app/api/live-prices/route.ts";
+import { resetCoinbaseMemo } from "../src/lib/providers/coinbase.ts";
+import { canonicalTokens } from "../src/data/canonical-tokens.ts";
+import { getLiveTokenProfile } from "../src/lib/data/live-data.ts";
+import { createFakeSupabase } from "./support/fake-supabase.mjs";
 import { BINANCE_SYMBOLS } from "../cloudflare/refresh-scheduler/src/binance-symbols.ts";
 
 const cases = [];
@@ -215,6 +219,7 @@ const productsFor = (url, overrides = {}) => url.searchParams.getAll("product_id
 }));
 
 test("the live-prices route returns Coinbase last price and 24h change keyed by product, in batches", async () => {
+  resetCoinbaseMemo();
   const stub = coinbaseStub(async (url) => Response.json({ products: productsFor(url, { [MAPPED_SYMBOL]: { price: "123.45", price_percentage_change_24h: "-2.5" } }) }));
   try {
     const response = await getLivePrices();
@@ -228,13 +233,12 @@ test("the live-prices route returns Coinbase last price and 24h change keyed by 
 });
 
 test("the route drops disabled, offline and non-finite products rather than sending zeros, and memoises success", async () => {
+  resetCoinbaseMemo();
   const ids = Object.values(coinbaseProducts);
   const stub = coinbaseStub(async (url) => Response.json({ products: productsFor(url, {
     [ids[1]]: { status: "offline" }, [ids[2]]: { trading_disabled: true }, [ids[3]]: { price: "abc" }, [ids[4]]: { price: "0" },
   }) }));
   try {
-    // The memo from the previous test is still fresh, so expire it by waiting past the window.
-    await new Promise((resolve) => setTimeout(resolve, 5_100));
     const body = await (await getLivePrices()).json();
     for (const id of [ids[1], ids[2], ids[3], ids[4]]) assert.equal(body.prices[id], undefined, `${id} omitted`);
     assert.ok(body.prices[ids[0]]);
@@ -245,13 +249,51 @@ test("the route drops disabled, offline and non-finite products rather than send
 });
 
 test("an upstream failure is a 502 that is never cacheable", async () => {
+  resetCoinbaseMemo();
   const stub = coinbaseStub(async () => new Response("blocked", { status: 403 }));
   try {
-    await new Promise((resolve) => setTimeout(resolve, 5_100));
     const response = await getLivePrices();
     assert.equal(response.status, 502);
     assert.equal(response.headers.get("cache-control"), "no-store");
     assert.deepEqual(await response.json(), { error: "Coinbase returned HTTP 403." });
+  } finally { stub.restore(); }
+});
+
+const profileTokenId = Object.keys(coinbaseProducts).find((id) => canonicalTokens.some((token) => token.id === id));
+const profileFor = (tokenId, seed = {}) => {
+  const token = canonicalTokens.find((candidate) => candidate.id === tokenId);
+  const client = createFakeSupabase({ seed: {
+    tokens: [{ id: token.id, name: token.name, symbol: token.symbol, chain_id: token.chainId, contract_address: token.contractAddress, is_native: token.isNative, category: token.category, description: token.identityNote }],
+    chains: [{ id: token.chainId, name: token.chainName }],
+    token_metric_observations: [
+      { id: 1, token_id: token.id, chain_id: token.chainId, metric_id: "price_usd", provider_id: "coingecko", value: 1.23, status: "available", observed_at: "2026-11-12T00:00:00.000Z", collected_at: "2026-11-12T00:00:00.000Z", source_field: "current_price", note: null },
+    ],
+    ...seed,
+  } }).client;
+  return getLiveTokenProfile(tokenId, client);
+};
+
+test("a server-rendered profile shows the live Coinbase price, attributed to the live exchange slot", async () => {
+  resetCoinbaseMemo();
+  const product = coinbaseProducts[profileTokenId];
+  const stub = coinbaseStub(async (url) => Response.json({ products: productsFor(url, { [product]: { price: "77.7", price_percentage_change_24h: "3.5" } }) }));
+  try {
+    const profile = await profileFor(profileTokenId);
+    assert.equal(profile.token.priceUsd, 77.7, "the live price replaces the stored 1.23");
+    assert.equal(profile.token.change24hPct, 3.5);
+    assert.equal(profile.token.metricSources.priceUsd.providerId, "binance");
+    assert.match(profile.token.metricSources.priceUsd.note, /Coinbase spot last trade, USD-quoted/);
+  } finally { stub.restore(); }
+});
+
+test("a failing live fetch falls back to the stored CoinGecko price instead of failing the page", async () => {
+  resetCoinbaseMemo();
+  const otherId = Object.keys(coinbaseProducts).filter((id) => canonicalTokens.some((token) => token.id === id))[1];
+  const stub = coinbaseStub(async () => new Response("blocked", { status: 403 }));
+  try {
+    const profile = await profileFor(otherId);
+    assert.equal(profile.token.priceUsd, 1.23);
+    assert.equal(profile.token.metricSources.priceUsd.providerId, "coingecko");
   } finally { stub.restore(); }
 });
 

@@ -2,9 +2,8 @@ import "server-only";
 
 import { createSupabaseAdminClient } from "../supabase/admin.ts";
 import { latestPerMetric, mergeById, readLatestObservations, readObservationWindow } from "./observation-reads.ts";
-import { binanceSymbols } from "../../data/binance-token-mappings.ts";
-import { BinanceMarketDataProvider, getBinanceConfig } from "../providers/binance.ts";
-import type { ProviderAsset } from "../providers/types.ts";
+import { coinbaseProducts } from "../../data/coinbase-token-mappings.ts";
+import { COINBASE_CHANGE_NOTE, COINBASE_PRICE_NOTE, fetchCoinbaseTickers } from "../providers/coinbase.ts";
 import { memoizeWithTtl } from "./ttl-cache.ts";
 import { getCacheTtlMultiplierSync, refreshThrottleLevelInBackground } from "../monitoring/quota-tracker.ts";
 import { selectMovers, type Movers } from "../ui/movers.ts";
@@ -100,49 +99,58 @@ type DbObservation = {
 };
 
 /**
- * Live price + 24h change from Binance, fetched at render time instead of read back
- * from stored history. Binance observations were previously written to
- * token_metric_observations on every refresh cycle purely so this same "latest row"
- * read pattern could serve them -- ~13K rows/day, 100% of it falling into the
- * non-chart retention bucket (Binance has no protected chart-metric exception the way
- * CoinGecko's price_usd/volume_24h_usd do), making it the second-largest contributor
- * to the database-size pressure investigated in this session. The client-side flashing
- * ticker (src/app/api/live-prices/route.ts) already proved a live, unpersisted fetch
- * works fine for this exact data; this does the same for the server-rendered price
- * instead of reading a row the app no longer writes.
+ * Live price + 24h change from Coinbase, fetched at render time instead of read back
+ * from stored history. These rows were once written to token_metric_observations on every
+ * refresh cycle purely so the dashboard's "latest row" read could serve them -- ~13K
+ * rows/day, 100% of it falling into the non-chart retention bucket, making it the second-
+ * largest contributor to the database-size pressure investigated earlier -- so the live
+ * price is fetched, never stored. Binance filled this slot until the app moved to
+ * Cloudflare Workers, whose addresses Binance rejects with HTTP 403; Coinbase's public
+ * product endpoint is reachable from there (see src/lib/providers/coinbase.ts). The provider
+ * id stays "binance": it is the id of the live-exchange-price slot (see DATASET_LABELS in
+ * ui/data-language.ts), which livePriceRow, the metric sources and the stored-history reads
+ * all key on.
  *
  * Returns the same DbObservation shape a stored read would have produced so
  * buildDashboardTokens/buildTokenHistory/livePriceRow need no change -- only where
  * these rows come from changes, not how anything downstream consumes them. A fetch
- * failure (Binance down, geo-blocked, network error) returns [] rather than throwing:
- * the existing CoinGecko fallback in livePriceRow already covers "no current Binance
- * price available" for a stale stored row, and an empty live fetch is the same case.
+ * failure (Coinbase down, network error) returns [] rather than throwing: the existing
+ * CoinGecko fallback in livePriceRow already covers "no current live price available".
+ * Tokens Coinbase does not list have no mapping and simply fall back too.
  */
 async function fetchLiveBinanceObservations(tokenIds: string[]): Promise<DbObservation[]> {
-  const assets: ProviderAsset[] = canonicalTokens
-    .filter((token) => tokenIds.includes(token.id) && binanceSymbols[token.id])
-    .map((token) => ({ tokenId: token.id, chainId: token.chainId, externalAssetId: binanceSymbols[token.id] }));
-  if (assets.length === 0) return [];
+  const mapped = canonicalTokens
+    .filter((token) => tokenIds.includes(token.id) && coinbaseProducts[token.id])
+    .map((token) => ({ tokenId: token.id, chainId: token.chainId, productId: coinbaseProducts[token.id] }));
+  if (mapped.length === 0) return [];
 
   try {
-    const provider = new BinanceMarketDataProvider(getBinanceConfig());
-    const snapshots = await provider.fetchSnapshots(assets);
+    const tickers = await fetchCoinbaseTickers(mapped.map((item) => item.productId));
+    const nowIso = new Date().toISOString();
     let syntheticId = -1;
-    return snapshots.flatMap((snapshot) => snapshot.observations.map((observation) => ({
-      id: syntheticId--,
-      token_id: observation.tokenId,
-      chain_id: observation.chainId,
-      metric_id: observation.metricId,
-      provider_id: "binance" as const,
-      value: observation.value,
-      status: observation.status,
-      observed_at: observation.observedAt,
-      collected_at: observation.collectedAt,
-      source_field: observation.sourceField,
-      note: observation.note,
-    })));
+    return mapped.flatMap((item) => {
+      const ticker = tickers.get(item.productId);
+      if (!ticker) return [];
+      const row = (metricId: string, value: number, sourceField: string, note: string): DbObservation => ({
+        id: syntheticId--,
+        token_id: item.tokenId,
+        chain_id: item.chainId,
+        metric_id: metricId,
+        provider_id: "binance" as const,
+        value,
+        status: "available",
+        observed_at: nowIso,
+        collected_at: nowIso,
+        source_field: sourceField,
+        note,
+      });
+      return [
+        row("price_usd", ticker.price, "price", COINBASE_PRICE_NOTE),
+        row("price_change_24h_pct", ticker.changePct, "price_percentage_change_24h", COINBASE_CHANGE_NOTE),
+      ];
+    });
   } catch (error) {
-    console.error("Live Binance fetch failed (price falls back to CoinGecko):", error);
+    console.error("Live Coinbase fetch failed (price falls back to CoinGecko):", error);
     return [];
   }
 }
