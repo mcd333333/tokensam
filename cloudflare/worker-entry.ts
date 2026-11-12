@@ -13,17 +13,28 @@
 // @ts-expect-error generated at build time, no type declarations
 import app from "../.open-next/worker.js";
 import scheduler from "./refresh-scheduler/src/index.ts";
+import { PriceStream } from "./price-stream.ts";
+
+// Durable Object class: must be exported from the Worker's entry module (see wrangler.jsonc migrations).
+export { PriceStream };
 
 // @ts-expect-error generated at build time, no type declarations
 export { DOQueueHandler, DOShardedTagCache, BucketCachePurge } from "../.open-next/worker.js";
 
 const SCHEDULER_FETCH_PATHS = ["/coingecko-proxy", "/binance-prices"];
+/** EXPERIMENT: live prices relayed from Binance / Coinbase WebSockets by a Durable Object (cloudflare/price-stream.ts). */
+const PRICE_STREAM_PREFIX = "/ws-prices/";
 
 type Handler = { fetch(request: Request, env: unknown, ctx: unknown): Promise<Response> };
 
 export default {
   async fetch(request: Request, env: Record<string, unknown>, ctx: unknown): Promise<Response> {
     const { pathname } = new URL(request.url);
+    if (pathname.startsWith(PRICE_STREAM_PREFIX)) {
+      const namespace = env.PRICE_STREAM as { idFromName(name: string): unknown; get(id: unknown): { fetch(request: Request): Promise<Response> } };
+      const source = pathname.slice(PRICE_STREAM_PREFIX.length).split("/")[0] ?? "";
+      return namespace.get(namespace.idFromName(source)).fetch(request);
+    }
     if (SCHEDULER_FETCH_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
       return scheduler.fetch(request, env as never, ctx as never);
     }

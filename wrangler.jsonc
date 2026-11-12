@@ -10,6 +10,9 @@
   // from the Worker's variables and secrets, which is where the app reads all of its config.
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // EXPERIMENT: one Durable Object instance per live-price WebSocket source (cloudflare/price-stream.ts).
+  "durable_objects": { "bindings": [{ "name": "PRICE_STREAM", "class_name": "PriceStream" }] },
+  "migrations": [{ "tag": "v1-price-stream", "new_sqlite_classes": ["PriceStream"] }],
   "images": { "binding": "IMAGES" },
   // Fires every 5 minutes: refresh, GeckoTerminal slices and the daily exchange volumes.
   "triggers": { "crons": ["*/5 * * * *"] },
