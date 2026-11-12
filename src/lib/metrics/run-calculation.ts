@@ -62,13 +62,14 @@ function throwOnError(error: { message: string } | null, action: string): void {
 /** Stored DexPaprika pool lists and CoinGecko's reported FDV, the engine's two inputs outside token_metric_observations. */
 async function readEngineExternalInputs(client: SupabaseAdminClient, tokenIds: string[]): Promise<EngineExternalInputs> {
   const external: EngineExternalInputs = { pools: {}, fdv: {} };
-  const poolsResult = await client.from("token_dex_pools").select("token_id,pools_at,pools").not("pools_at", "is", null);
+  const poolsResult = await client.from("token_dex_pools").select("token_id,pools_at,top:pools->0").not("pools_at", "is", null);
   throwOnError(poolsResult.error, "read stored DEX pools");
-  for (const row of (poolsResult.data ?? []) as { token_id: string; pools_at: string; pools: unknown }[]) {
-    if (!Array.isArray(row.pools)) continue;
+  // Only the most liquid pool (index 0) is read: the full list is up to ~35 KB per token and this runs every metrics pass.
+  for (const row of (poolsResult.data ?? []) as { token_id: string; pools_at: string; top: unknown }[]) {
+    if (!row.top || typeof row.top !== "object") continue;
     external.pools![row.token_id] = {
       poolsAt: row.pools_at,
-      pools: (row.pools as Record<string, unknown>[]).filter((pool) => typeof pool?.pairAddress === "string").map((pool) => ({
+      pools: [row.top as Record<string, unknown>].filter((pool) => typeof pool?.pairAddress === "string").map((pool) => ({
         pairAddress: pool.pairAddress as string,
         dexId: typeof pool.dexId === "string" ? pool.dexId : null,
         liquidityUsd: typeof pool.liquidityUsd === "number" ? pool.liquidityUsd : null,
