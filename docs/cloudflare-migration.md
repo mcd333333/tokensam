@@ -37,7 +37,7 @@ variables added in the dashboard.
 ## Notes
 
 - `process.env` is populated from the Worker's variables and secrets (`nodejs_compat` with this compatibility date).
-- `placement.mode = "smart"` runs the Worker near Supabase (Seoul); each request makes many small database calls.
+- `placement.region = "aws:ap-northeast-2"` runs the Worker next to Supabase (Seoul); each request makes many small database calls, and smart placement left it in Washington (pages took 6-13 s).
 - `limits.cpu_ms = 300000` allows the long refresh and retention routes.
 - Images use the `IMAGES` binding. Local preview: `pnpm cf:preview` with a `.dev.vars` (see `.dev.vars.example`).
 - `vercel.json` and the old scheduler-only deploy (`cloudflare/refresh-scheduler/wrangler.toml`) are not used after cutover.

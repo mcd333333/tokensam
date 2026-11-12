@@ -21,8 +21,10 @@
     "COINGECKO_API_PLAN": "demo"
   },
   "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": true, "persist": true } },
-  // Many small Supabase calls per request: run near the database rather than the visitor.
-  "placement": { "mode": "smart" },
+  // Many small Supabase calls per request: run next to the database (Supabase project region
+  // ap-northeast-2, Seoul) rather than the visitor. Smart placement left the Worker in Washington
+  // (cf-placement: local-IAD) and every page took 6-13 s of cross-Pacific round trips.
+  "placement": { "region": "aws:ap-northeast-2" },
   // The cron routes (refresh, retention) parse and write a lot of rows; the default CPU limit is far too low.
   "limits": { "cpu_ms": 300000 }
 }
