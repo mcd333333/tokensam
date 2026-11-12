@@ -11,7 +11,6 @@ import { addressEquals, type DexScreenerPair } from "./dexscreener.ts";
 
 const BASE_URL = "https://api.dexscreener.com";
 const REQUEST_TIMEOUT_MS = 15_000;
-const USER_AGENT = "tokensam/1.0 (dex pools; +https://github.com/dm999999-ctrl/tokensam)";
 /** Pools kept per token, most liquid first. */
 export const MAX_POOLS_PER_TOKEN = 30;
 /** Minimum spacing between requests (the limit is 300/minute). */
@@ -95,7 +94,8 @@ export async function fetchDexPools(
     let response: Response;
     try {
       response = await fetchImpl(url, {
-        headers: { accept: "application/json", "user-agent": USER_AGENT },
+        // Same request shape as the main DEX Screener collector, which works from Cloudflare: Accept only, no custom User-Agent.
+        headers: { accept: "application/json" },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch {

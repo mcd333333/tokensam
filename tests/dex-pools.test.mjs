@@ -47,18 +47,18 @@ test("non-numeric fields become null, never zero, and the list is capped", () =>
   assert.deepEqual(normalizeDexPools("ethereum", UNI, null), []);
 });
 
-test("the request hits token-pairs/v1 with a User-Agent, retries a 429 once, and does not surface bodies", async () => {
+test("the request hits token-pairs/v1 with the same headers as the main collector, retries a 429 once, and does not surface bodies", async () => {
   let calls = 0;
   const seen = [];
   const fetchImpl = async (url, init) => {
     calls += 1;
-    seen.push({ url: String(url), agent: init.headers["user-agent"] });
+    seen.push({ url: String(url), headers: init.headers });
     return calls === 1 ? new Response("limited", { status: 429 }) : Response.json([pair("0x1")]);
   };
   const pools = await fetchDexPools("ethereum", UNI, { fetchImpl, sleep: async () => {} });
   assert.equal(pools.length, 1);
   assert.equal(calls, 2);
-  assert.ok(seen.every((entry) => entry.url === `https://api.dexscreener.com/token-pairs/v1/ethereum/${UNI}` && /^tokensam\//.test(entry.agent)));
+  assert.ok(seen.every((entry) => entry.url === `https://api.dexscreener.com/token-pairs/v1/ethereum/${UNI}` && JSON.stringify(entry.headers) === JSON.stringify({ accept: "application/json" })));
   await assert.rejects(
     fetchDexPools("ethereum", UNI, { fetchImpl: async () => new Response("secret body", { status: 403 }), sleep: async () => {} }),
     (error) => error.status === 403 && !/secret body/.test(error.message),
