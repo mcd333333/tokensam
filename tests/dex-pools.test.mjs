@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { MAX_POOLS_PER_TOKEN, dexPaprikaNetwork, fetchDexPools, normalizeDexPools, DexPoolApiError } from "../src/lib/providers/dexpaprika-pools.ts";
+import { MAX_POOLS_PER_TOKEN, dexPaprikaAddress, dexPaprikaNetwork, fetchDexPools, normalizeDexPools, DexPoolApiError } from "../src/lib/providers/dexpaprika-pools.ts";
 import { DEX_POOL_REFRESH_AFTER_MS, dexPoolAssets, onchainIdentityFor, runDexPoolCollection } from "../src/lib/providers/run-dex-pool-collection.ts";
 import { getLiveTokenProfile } from "../src/lib/data/live-data.ts";
 import { canonicalTokens } from "../src/data/canonical-tokens.ts";
@@ -44,6 +44,13 @@ test("network names: Hyperliquid maps to hyperevm, ICP is unsupported, the rest 
   assert.equal(dexPaprikaNetwork("icp"), null);
   assert.equal(dexPaprikaNetwork("ethereum"), "ethereum");
   assert.ok(dexPoolAssets.every((asset) => asset.network !== "icp" && asset.network !== "hyperliquid"));
+});
+
+test("Sui coin types are padded to the full package id DexPaprika matches; other addresses are untouched", () => {
+  assert.equal(dexPaprikaAddress("sui", "0x2::sui::SUI"), "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI");
+  assert.equal(dexPaprikaAddress("sui", "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"), "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI");
+  assert.equal(dexPaprikaAddress("aptos", "0x1::aptos_coin::AptosCoin"), "0x1::aptos_coin::AptosCoin");
+  assert.equal(dexPaprikaAddress("ethereum", UNI), UNI);
 });
 
 test("the request is a token_address pool search; the key goes in Authorization only when set; a 429 is retried once", async () => {

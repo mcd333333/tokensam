@@ -1,7 +1,7 @@
 import { dexScreenerTokenMappings } from "../../data/dexscreener-token-mappings.ts";
 import { extraOnchainMappings } from "../../data/dexpaprika-extra-mappings.ts";
 import { canonicalTokens } from "../../data/canonical-tokens.ts";
-import { DEX_POOL_RATE_LIMIT_COOLDOWN_MS, DEX_POOL_REQUEST_INTERVAL_MS, DexPoolApiError, dexPaprikaNetwork, fetchDexPools } from "./dexpaprika-pools.ts";
+import { DEX_POOL_RATE_LIMIT_COOLDOWN_MS, DEX_POOL_REQUEST_INTERVAL_MS, DexPoolApiError, dexPaprikaAddress, dexPaprikaNetwork, fetchDexPools } from "./dexpaprika-pools.ts";
 
 type SupabaseAdminClient = ReturnType<typeof import("../supabase/admin").createSupabaseAdminClient>;
 
@@ -86,7 +86,7 @@ export async function runDexPoolCollection(
     if (result.attempted > 0) await sleep(minIntervalMs);
     result.attempted += 1;
     try {
-      const pools = await fetchPools(asset.network, asset.tokenAddress);
+      const pools = await fetchPools(asset.network, dexPaprikaAddress(asset.network, asset.tokenAddress));
       const { error: writeError } = await client.from("token_dex_pools")
         .upsert({ token_id: asset.tokenId, fetched_at: new Date().toISOString(), pools }, { onConflict: "token_id" });
       if (writeError) throw new Error(`Supabase write DEX pools failed: ${writeError.message}`);

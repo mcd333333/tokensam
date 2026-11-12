@@ -27,6 +27,16 @@ export function dexPaprikaNetwork(chainId: string): string | null {
   return NETWORK_ALIASES[chainId] ?? chainId;
 }
 
+/**
+ * The token address in the form DexPaprika indexes. Sui coin types are stored with the shortened package id
+ * ("0x2::sui::SUI"), but DexPaprika only matches the full 64-hex form, so the package id is zero-padded.
+ */
+export function dexPaprikaAddress(network: string, tokenAddress: string): string {
+  if (network !== "sui") return tokenAddress;
+  const match = /^0x([0-9a-fA-F]{1,63})(::.+)$/.exec(tokenAddress);
+  return match ? `0x${match[1].padStart(64, "0")}${match[2]}` : tokenAddress;
+}
+
 export type DexPool = {
   pairAddress: string;
   /** DexPaprika's dex id, which carries the version, e.g. "uniswap_v3". */
