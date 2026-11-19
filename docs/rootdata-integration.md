@@ -48,6 +48,6 @@ Six tokens have no RootData project match (PAXG, RLUSD, XAUT, TFUEL, USDS, WBTC)
 - Oak HC/FT and Valor Equity Partners are exact investor matches from RootData's free `ser_inv` search.
 - Bank of America is an exact-name match, but RootData files it as a project rather than an investor; its logo is the bank's.
 - DRW uses the logo of RootData's `DRW Venture Capital`, DRW's venture arm (the name in the profile is the parent).
-- Mithril Capital and Galaxy Digital Ventures have no verified RootData match and keep a letter.
+- Mithril Capital and Galaxy Digital Ventures have no RootData image. They use two small square PNGs supplied by the site owner, `public/investor-logos/mithril-capital.png` and `galaxy.png` (the Galaxy file is the symbol only, cropped from the full lockup), referenced by path in the map. The page accepts a local logo only as a bare `*.png` name directly under `/investor-logos/`.
 
-The page only renders logos hosted on `*.rootdata.com`. To refresh the map after a new profile is added, search the new investor names with `ser_inv` (search requests do not spend credits) and add exact matches.
+The page only renders logos hosted on `*.rootdata.com` or the local files above. To refresh the map after a new profile is added, search the new investor names with `ser_inv` (search requests do not spend credits) and add exact matches.

@@ -1,5 +1,5 @@
 {
-  "_comment": "Investor logos for the profiles built from CryptoRank/press data (src/data/cryptorank-token-profiles.json), which list investors by name only. Each logo is the RootData-hosted image of the investor of the same name, taken from the RootData profiles already stored in rootdata_project_profiles, or from RootData's free investor search where no stored profile had it. Matching is by exact name, except where noted in docs/rootdata-integration.md. Unmatched names (Mithril Capital, Galaxy Digital Ventures) deliberately have no entry and show a letter.",
+  "_comment": "Investor logos for the profiles built from CryptoRank/press data (src/data/cryptorank-token-profiles.json), which list investors by name only. Each logo is the RootData-hosted image of the investor of the same name, taken from the RootData profiles already stored in rootdata_project_profiles, or from RootData's free investor search where no stored profile had it. Matching is by exact name, except where noted in docs/rootdata-integration.md. Mithril Capital and Galaxy Digital Ventures have no RootData image, so they use files in public/investor-logos/ (supplied by the site owner) referenced by path.",
   "logos": {
     "1confirmation": "https://public.rootdata.com/images/b17/1666778378175.jpg",
     "a16z Frontier": "https://public.rootdata.com/images/b6/1792716483250.png",
@@ -28,6 +28,7 @@
     "FBG Capital": "https://public.rootdata.com/images/b16/1668766641042.jpg",
     "Founders Fund": "https://public.rootdata.com/images/b17/1666774224290.jpg",
     "Galaxy": "https://public.rootdata.com/images/b6/1697082786839.jpg",
+    "Galaxy Digital Ventures": "/investor-logos/galaxy.png",
     "Goldman Sachs": "https://public.rootdata.com/images/b70/1782099209283.jpg",
     "gumi Cryptos Capital": "https://public.rootdata.com/images/b17/1666870556320.jpg",
     "Heuristic Capital": "https://public.rootdata.com/images/b9/1672901181723.jpg",
@@ -36,6 +37,7 @@
     "Lightspeed Venture": "https://public.rootdata.com/images/b17/1666772808800.jpg",
     "LinkVC": "https://public.rootdata.com/images/b17/1666781204991.jpg",
     "Marshall Wace": "https://public.rootdata.com/images/b16/1668831176306.jpg",
+    "Mithril Capital": "/investor-logos/mithril-capital.png",
     "Nirvana Capital": "https://public.rootdata.com/images/b17/1666781246001.jpg",
     "Node Capital": "https://public.rootdata.com/images/b55/1791122873609.jpg",
     "Oak HC/FT": "https://public.rootdata.com/images/b17/1666867239493.jpg",

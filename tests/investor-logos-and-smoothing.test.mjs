@@ -14,20 +14,41 @@ const logos = readJson("../src/data/investor-logos.json").logos;
 const profiles = readJson("../src/data/cryptorank-token-profiles.json");
 const investorNames = [...new Set(profiles.entries.flatMap((entry) => entry.funding.investors ?? []))];
 
-test("every CryptoRank-profile investor has a RootData logo except the two with no verified match", () => {
+const LOCAL_LOGO = /^\/investor-logos\/[a-z0-9-]+\.png$/;
+
+test("every investor in the CryptoRank-sourced profiles has a logo", () => {
   assert.equal(investorNames.length, 64);
-  const missing = investorNames.filter((name) => !logos[name]).sort();
-  assert.deepEqual(missing, ["Galaxy Digital Ventures", "Mithril Capital"]);
-  assert.equal(investorNames.length - missing.length, 62);
+  assert.deepEqual(investorNames.filter((name) => !logos[name]), []);
 });
 
-test("every logo is an https image on a RootData host, which is all the page will render", () => {
+test("every logo is either an https image on a RootData host or a bare PNG name in public/investor-logos, the only two the page renders", () => {
   for (const [name, url] of Object.entries(logos)) {
+    if (LOCAL_LOGO.test(url)) continue;
     const parsed = new URL(url);
     assert.equal(parsed.protocol, "https:", name);
     assert.ok(parsed.hostname.endsWith(".rootdata.com"), `${name}: ${parsed.hostname}`);
     assert.match(parsed.pathname, /\.(jpg|jpeg|png)$/i, name);
   }
+});
+
+test("the two investors RootData has no image for use files shipped in public/investor-logos", () => {
+  const local = Object.entries(logos).filter(([, url]) => LOCAL_LOGO.test(url));
+  assert.deepEqual(local.map(([name]) => name).sort(), ["Galaxy Digital Ventures", "Mithril Capital"]);
+  for (const [name, url] of local) {
+    const file = readFileSync(new URL(`../public${url}`, import.meta.url));
+    assert.deepEqual([...file.subarray(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], `${name}: a real PNG`);
+    const width = file.readUInt32BE(16); const height = file.readUInt32BE(20);
+    assert.equal(width, height, `${name}: square, so the circular crop does not cut it`);
+    assert.ok(width >= 64 && width <= 512, `${name}: ${width}px`);
+    assert.ok(file.length < 40_000, `${name}: ${file.length} bytes`);
+  }
+});
+
+test("the profile page only accepts a bare file name in the investor logo folder as a local logo", () => {
+  const source = readFileSync(new URL("../src/components/TokenProfile.tsx", import.meta.url), "utf8");
+  assert.match(source, /function localInvestorLogo\(value: unknown\): string \| null/);
+  assert.ok(source.includes("/^\\/investor-logos\\/[a-z0-9-]+\\.png$/"), "the accepted pattern is a single file name under /investor-logos/");
+  assert.ok(source.includes("image.hostname.endsWith(\".rootdata.com\") ? image.href : localInvestorLogo(logo)"), "RootData-hosted images are still preferred");
 });
 
 test("the map has no stray entries: every key is an investor name used by a profile", () => {

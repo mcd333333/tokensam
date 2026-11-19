@@ -178,6 +178,14 @@ function safeExternalUrl(value: unknown): URL | null {
   }
 }
 
+/**
+ * An investor logo that ships with the site (public/investor-logos/), for investors RootData has no image for. Only a
+ * bare file name in that one folder is accepted, so profile data can never point the page at another path.
+ */
+function localInvestorLogo(value: unknown): string | null {
+  return typeof value === "string" && /^\/investor-logos\/[a-z0-9-]+\.png$/.test(value) ? value : null;
+}
+
 function ProjectLinks({ profile }: { profile: RootDataProfile }) {
   const addresses = new Map<string, string>();
   const add = (key: unknown, value: unknown) => {
@@ -264,7 +272,7 @@ function RootDataSection({ profile }: { profile: RootDataProfile }) {
       const key = displayName.toLowerCase();
       const previous = investorsByName.get(key);
       const image = safeExternalUrl(logo);
-      const logoUrl = image?.protocol === "https:" && image.hostname.endsWith(".rootdata.com") ? image.href : null;
+      const logoUrl = image?.protocol === "https:" && image.hostname.endsWith(".rootdata.com") ? image.href : localInvestorLogo(logo);
       investorsByName.set(key, {
         name: previous?.name ?? displayName,
         logo: previous?.logo ?? logoUrl,
