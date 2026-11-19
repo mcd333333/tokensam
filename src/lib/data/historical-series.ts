@@ -150,8 +150,12 @@ export function hourlyRiskSamples(points: HistoricalPoint[], asOf: Date): Histor
     }));
 }
 
-/** A missing hour or two is common in the stored history; longer holes still restart the calculation. */
-export const RISK_MAX_GAP_HOURS = 3;
+/**
+ * Collection holes are common in the stored history (a 4-hour database stall on 2026-11-18 left no prices for any token),
+ * and the price and volume charts simply draw straight through them. Volatility does the same for holes up to this long;
+ * only a longer hole restarts the calculation.
+ */
+export const RISK_MAX_GAP_HOURS = 12;
 
 /**
  * Rolling annualized volatility from hourly log returns:

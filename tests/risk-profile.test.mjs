@@ -63,8 +63,19 @@ test("6. missing, null, zero, negative and non-finite prices are skipped, never 
   assert.deepEqual(values(profile.drawdown).map((v) => Math.round(v)), [0, -20]);
 });
 
-test("a single missing hour no longer restarts volatility; a hole longer than 3 hours still does", () => {
-  const prices = Array.from({ length: 40 }, (_, i) => 100 + Math.sin(i / 3) * 4);
+test("a 4-hour outage does not restart or spike volatility", () => {
+  const prices = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i / 3) * 4);
+  const full = hourly(prices);
+  const outage = full.filter((_, i) => i < 30 || i >= 34);
+  const risk = rollingVolatility(outage);
+  const before = risk.find((point) => point.timestamp === full[29].timestamp).valueUsd;
+  const after = risk.filter((point) => Date.parse(point.timestamp) > Date.parse(full[29].timestamp));
+  assert.equal(after.length, outage.length - 30, "no new warm-up after the outage");
+  assert.ok(Math.abs(after[0].valueUsd - before) < 25, `no step at the outage (${before} -> ${after[0].valueUsd})`);
+});
+
+test("a single missing hour no longer restarts volatility; a hole longer than 12 hours still does", () => {
+  const prices = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i / 3) * 4);
   const full = hourly(prices);
   const oneMissing = full.filter((_, i) => i !== 20);
   const risk = rollingVolatility(oneMissing);
@@ -73,9 +84,9 @@ test("a single missing hour no longer restarts volatility; a hole longer than 3 
   // The 2-hour return is scaled by 1/sqrt(2), so no step in volatility from the gap alone.
   const jump = Math.abs(afterGap[0].valueUsd - risk.find((point) => point.timestamp === full[19].timestamp).valueUsd);
   assert.ok(jump < 25, `no spike at the gap (${jump})`);
-  const longHole = full.filter((_, i) => i < 15 || i >= 20);
+  const longHole = full.filter((_, i) => i < 15 || i >= 30);
   const resumed = rollingVolatility(longHole).filter((point) => Date.parse(point.timestamp) > Date.parse(full[14].timestamp));
-  assert.ok(Date.parse(resumed[0].timestamp) - Date.parse(full[14].timestamp) >= 6 * HOUR, "a 5-hour hole restarts the warm-up (two consecutive returns needed)");
+  assert.ok(Date.parse(resumed[0].timestamp) - Date.parse(full[14].timestamp) >= 17 * HOUR, "a 15-hour hole restarts the warm-up (two consecutive returns needed)");
 });
 
 test("7. chronological order: drawdown sorts by time; risk samples normalize to UTC hourly boundaries", () => {
