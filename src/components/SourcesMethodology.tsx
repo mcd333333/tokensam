@@ -82,7 +82,7 @@ export function SourcesMethodology({ methodology, corporateProfileSource, corpor
             {corporateProfileSource ? (
               <div>
                 <dt>Corporate profile and fundraising</dt>
-                <dd><a href={corporateProfileSource} target="_blank" rel="noopener noreferrer">RootData</a></dd>
+                <dd>RootData</dd>
               </div>
             ) : corporateProfileFromCryptoRank ? (
               <div>
