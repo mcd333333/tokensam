@@ -11,11 +11,11 @@ import type { Methodology } from "@/lib/ui/profile-model";
  * shown. Raw collection notes (ingestion, aggregation and missing-field details)
  * stay in the model for audit but are not rendered.
  */
-export function SourcesMethodology({ methodology, corporateProfileSource, corporateProfileLinks, open, onToggle }: {
+export function SourcesMethodology({ methodology, corporateProfileSource, corporateProfileFromCryptoRank, open, onToggle }: {
   methodology: Methodology;
   corporateProfileSource?: string;
-  /** Attribution links for profiles built from CryptoRank/press data (profile, funding amount, investor list). */
-  corporateProfileLinks?: { label: string; href: string }[];
+  /** True for profiles built from CryptoRank/press data; named under Data provenance without links. */
+  corporateProfileFromCryptoRank?: boolean;
   open: boolean;
   onToggle: (open: boolean) => void;
 }) {
@@ -84,17 +84,10 @@ export function SourcesMethodology({ methodology, corporateProfileSource, corpor
                 <dt>Corporate profile and fundraising</dt>
                 <dd><a href={corporateProfileSource} target="_blank" rel="noopener noreferrer">RootData</a></dd>
               </div>
-            ) : corporateProfileLinks && corporateProfileLinks.length > 0 ? (
+            ) : corporateProfileFromCryptoRank ? (
               <div>
                 <dt>Corporate profile and fundraising</dt>
-                <dd>
-                  {corporateProfileLinks.map((link, index) => (
-                    <span key={link.href}>
-                      {index > 0 ? " · " : null}
-                      <a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}</a>
-                    </span>
-                  ))}
-                </dd>
+                <dd>CryptoRank</dd>
               </div>
             ) : null}
           </dl>
