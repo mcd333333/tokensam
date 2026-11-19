@@ -15,14 +15,23 @@
  * - Only 200 text/html responses without Set-Cookie are stored; errors and anything else pass straight through.
  * - The client's own Cache-Control request header is ignored: honouring `no-cache` would let any crawler bypass the cache.
  * - `x-page-cache: HIT | STALE | MISS | BYPASS` on every response it touches, for diagnosis.
- * - The Cache API is a no-op on `*.workers.dev` hosts, so this only takes effect on a custom domain (zone route).
+ * - Every entry is keyed by the deployed Worker version (`options.version`, from the version-metadata binding). A page's HTML
+ *   names that build's hashed JS and CSS files, and a later deploy removes them, so HTML kept across a deploy would load
+ *   broken ("This page couldn't load", ChunkLoadError). A new version therefore never sees the old one's entries. With no
+ *   version available nothing is cached at all: failing to cache is always safer than caching HTML from another build.
+ * - The Cache API works on `*.workers.dev` too (a hit there reports `cf-cache-status: HIT`), so this is live wherever the Worker is.
  */
 
 /** Fresh for 10 minutes, then up to 5 more served stale while one render refreshes it: no page is shown older than 15. */
 export const DEFAULT_PAGE_CACHE_TTL_SECONDS = 600;
 export const DEFAULT_PAGE_CACHE_STALE_SECONDS = 300;
 
-export type PageCacheOptions = { ttlSeconds: number; staleSeconds: number };
+export type PageCacheOptions = {
+  ttlSeconds: number;
+  staleSeconds: number;
+  /** Identifier of the deployed Worker version; null or empty disables the cache (see the header comment). */
+  version: string | null;
+};
 export type CacheLike = {
   match(request: Request): Promise<Response | undefined>;
   put(request: Request, response: Response): Promise<void>;
@@ -43,13 +52,15 @@ function parseSeconds(raw: unknown): number | null {
 }
 
 /**
- * Cache windows from the PAGE_CACHE_TTL_SECONDS and PAGE_CACHE_STALE_SECONDS variables. Unset or invalid values mean the
- * defaults (10 min fresh, 5 min stale); a TTL of 0 turns the cache off.
+ * Cache windows from the PAGE_CACHE_TTL_SECONDS and PAGE_CACHE_STALE_SECONDS variables, plus the deployed Worker version.
+ * Unset or invalid values mean the defaults (10 min fresh, 5 min stale); a TTL of 0 turns the cache off, and so does a
+ * missing version.
  */
-export function pageCacheOptions(rawTtl: unknown, rawStale?: unknown): PageCacheOptions {
+export function pageCacheOptions(rawTtl: unknown, rawStale?: unknown, rawVersion?: unknown): PageCacheOptions {
+  const version = typeof rawVersion === "string" && rawVersion.trim() !== "" ? rawVersion.trim() : null;
   const ttlSeconds = parseSeconds(rawTtl) ?? DEFAULT_PAGE_CACHE_TTL_SECONDS;
-  if (ttlSeconds === 0) return { ttlSeconds: 0, staleSeconds: 0 };
-  return { ttlSeconds, staleSeconds: parseSeconds(rawStale) ?? DEFAULT_PAGE_CACHE_STALE_SECONDS };
+  if (ttlSeconds === 0) return { ttlSeconds: 0, staleSeconds: 0, version };
+  return { ttlSeconds, staleSeconds: parseSeconds(rawStale) ?? DEFAULT_PAGE_CACHE_STALE_SECONDS, version };
 }
 
 export function isCacheablePageRequest(request: Request): boolean {
@@ -60,9 +71,10 @@ export function isCacheablePageRequest(request: Request): boolean {
   return !NON_PAGE_REQUEST_HEADERS.some((name) => request.headers.has(name));
 }
 
-function cacheKey(request: Request): Request {
+/** One entry per page per deployed version: the version is part of the key, never a header to compare. */
+function cacheKey(request: Request, version: string): Request {
   const url = new URL(request.url);
-  return new Request(`${url.origin}${url.pathname}`, { method: "GET" });
+  return new Request(`${url.origin}${url.pathname}?__v=${encodeURIComponent(version)}`, { method: "GET" });
 }
 
 function isStorable(response: Response): boolean {
@@ -114,9 +126,11 @@ export async function servePageCached(
   options: PageCacheOptions,
   now: () => number = Date.now,
 ): Promise<Response> {
-  if (!cache || options.ttlSeconds <= 0 || !isCacheablePageRequest(request)) return origin();
+  // No cache, TTL 0, no known version, or not a plain page load: render untouched. A missing version must disable the
+  // cache rather than share one key across builds.
+  if (!cache || options.ttlSeconds <= 0 || !options.version || !isCacheablePageRequest(request)) return origin();
 
-  const key = cacheKey(request);
+  const key = cacheKey(request, options.version);
   const keyUrl = key.url;
   let cached: Response | undefined;
   try {

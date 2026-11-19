@@ -32,7 +32,7 @@ function originCounter(body = () => "page", init = {}) {
   };
   return state;
 }
-const OPTIONS = { ttlSeconds: 300, staleSeconds: 900 };
+const OPTIONS = { ttlSeconds: 300, staleSeconds: 900, version: "v1" };
 const page = (path = "/", headers = {}) => new Request(`https://example.com${path}`, { headers });
 
 test("the first view renders, later views inside the TTL come from the cache without touching the origin", async () => {
@@ -145,7 +145,7 @@ test("errors, non-HTML and cookie-setting responses are passed through and never
 test("a TTL of 0, or no cache available (workers.dev), leaves the origin response completely untouched", async () => {
   resetPageCacheForTests();
   const ctx = ctxCollector(); const origin = originCounter();
-  const off = await servePageCached(page("/"), ctx, origin.fn, fakeCache(), { ttlSeconds: 0, staleSeconds: 0 }, () => 1);
+  const off = await servePageCached(page("/"), ctx, origin.fn, fakeCache(), { ttlSeconds: 0, staleSeconds: 0, version: "v1" }, () => 1);
   assert.equal(off.headers.get("x-page-cache"), null);
   assert.equal(off.headers.get("cache-control"), "private, no-store");
   const none = await servePageCached(page("/"), ctx, origin.fn, undefined, OPTIONS, () => 1);
@@ -165,18 +165,56 @@ test("a failing cache is skipped rather than failing the page", async () => {
 
 test("the defaults are 10 minutes fresh then 5 minutes stale, and the env vars can override either", () => {
   assert.equal(DEFAULT_PAGE_CACHE_TTL_SECONDS, 600);
-  assert.deepEqual(pageCacheOptions(undefined), { ttlSeconds: 600, staleSeconds: 300 });
-  assert.deepEqual(pageCacheOptions("garbage", "nope"), { ttlSeconds: 600, staleSeconds: 300 });
-  assert.deepEqual(pageCacheOptions("-5", "-1"), { ttlSeconds: 600, staleSeconds: 300 });
-  assert.deepEqual(pageCacheOptions("120"), { ttlSeconds: 120, staleSeconds: 300 }, "stale keeps its default when only the TTL is set");
-  assert.deepEqual(pageCacheOptions("120", "60"), { ttlSeconds: 120, staleSeconds: 60 });
-  assert.deepEqual(pageCacheOptions("900", "0"), { ttlSeconds: 900, staleSeconds: 0 }, "a zero stale window is allowed");
-  assert.deepEqual(pageCacheOptions("0", "60"), { ttlSeconds: 0, staleSeconds: 0 }, "TTL 0 turns the cache off entirely");
+  assert.deepEqual(pageCacheOptions(undefined, undefined, "v1"), { ttlSeconds: 600, staleSeconds: 300, version: "v1" });
+  assert.deepEqual(pageCacheOptions("garbage", "nope", "v1"), { ttlSeconds: 600, staleSeconds: 300, version: "v1" });
+  assert.deepEqual(pageCacheOptions("-5", "-1", "v1"), { ttlSeconds: 600, staleSeconds: 300, version: "v1" });
+  assert.deepEqual(pageCacheOptions("120", undefined, "v1"), { ttlSeconds: 120, staleSeconds: 300, version: "v1" }, "stale keeps its default when only the TTL is set");
+  assert.deepEqual(pageCacheOptions("120", "60", "v1"), { ttlSeconds: 120, staleSeconds: 60, version: "v1" });
+  assert.deepEqual(pageCacheOptions("900", "0", "v1"), { ttlSeconds: 900, staleSeconds: 0, version: "v1" }, "a zero stale window is allowed");
+  assert.deepEqual(pageCacheOptions("0", "60", "v1"), { ttlSeconds: 0, staleSeconds: 0, version: "v1" }, "TTL 0 turns the cache off entirely");
+});
+
+test("the deployed version is part of the key: a new deploy never serves the previous build's cached HTML", async () => {
+  // This is the production failure this guards against: HTML cached by build A names A's hashed chunks, which build B's
+  // deploy deletes, so serving it after the deploy loads as "This page couldn't load".
+  resetPageCacheForTests();
+  const cache = fakeCache(); const ctx = ctxCollector(); let clock = 40_000_000;
+  const buildA = originCounter(() => "html from build A");
+  const optionsA = pageCacheOptions(undefined, undefined, "version-A");
+  await servePageCached(page("/tokens/bitcoin-btc"), ctx, buildA.fn, cache, optionsA, () => clock); await ctx.flush();
+  clock += 30_000; // still well inside build A's TTL
+  assert.equal((await servePageCached(page("/tokens/bitcoin-btc"), ctx, buildA.fn, cache, optionsA, () => clock)).headers.get("x-page-cache"), "HIT");
+
+  const buildB = originCounter(() => "html from build B");
+  const optionsB = pageCacheOptions(undefined, undefined, "version-B");
+  const after = await servePageCached(page("/tokens/bitcoin-btc"), ctx, buildB.fn, cache, optionsB, () => clock);
+  assert.equal(after.headers.get("x-page-cache"), "MISS", "build B does not see build A's entry");
+  assert.equal(await after.text(), "html from build B");
+  assert.equal(buildB.calls, 1);
+  await ctx.flush();
+  assert.equal(cache.store.size, 2, "the two builds keep separate entries");
+});
+
+test("with no known version nothing is cached: failing to cache beats caching HTML from another build", async () => {
+  for (const missing of [undefined, null, "", "   "]) {
+    resetPageCacheForTests();
+    const cache = fakeCache(); const ctx = ctxCollector(); const origin = originCounter();
+    const options = pageCacheOptions(undefined, undefined, missing);
+    assert.equal(options.version, null);
+    for (let i = 0; i < 3; i += 1) {
+      const response = await servePageCached(page("/"), ctx, origin.fn, cache, options, () => 1);
+      assert.equal(response.headers.get("x-page-cache"), null, "untouched pass-through");
+    }
+    await ctx.flush();
+    assert.equal(origin.calls, 3, "rendered every time");
+    assert.equal(cache.store.size, 0, "nothing stored");
+  }
+  assert.equal(pageCacheOptions(undefined, undefined, "  abc  ").version, "abc", "the version is trimmed");
 });
 
 test("with the defaults no visitor is served a page older than 15 minutes", async () => {
   resetPageCacheForTests();
-  const options = pageCacheOptions(undefined);
+  const options = pageCacheOptions(undefined, undefined, "v1");
   const cache = fakeCache(); const ctx = ctxCollector(); const origin = originCounter((n) => `render ${n}`); let clock = 20_000_000;
   await servePageCached(page(), ctx, origin.fn, cache, options, () => clock); await ctx.flush();
   clock += 599_000; // 9m59s

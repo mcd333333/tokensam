@@ -48,7 +48,7 @@ export default {
       ctx as WaitUntil,
       () => (app as Handler).fetch(request, env, ctx),
       edgeCache,
-      pageCacheOptions(env.PAGE_CACHE_TTL_SECONDS, env.PAGE_CACHE_STALE_SECONDS),
+      pageCacheOptions(env.PAGE_CACHE_TTL_SECONDS, env.PAGE_CACHE_STALE_SECONDS, (env.CF_VERSION_METADATA as { id?: string } | undefined)?.id),
     );
   },
   async scheduled(event: unknown, env: Record<string, unknown>, ctx: unknown): Promise<void> {
