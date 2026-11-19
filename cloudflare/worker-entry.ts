@@ -14,6 +14,7 @@
 import app from "../.open-next/worker.js";
 import scheduler from "./refresh-scheduler/src/index.ts";
 import { PriceStream } from "./price-stream.ts";
+import { pageCacheOptions, servePageCached, type CacheLike, type WaitUntil } from "./page-cache.ts";
 
 // Durable Object class: must be exported from the Worker's entry module (see wrangler.jsonc migrations).
 export { PriceStream };
@@ -38,7 +39,17 @@ export default {
     if (SCHEDULER_FETCH_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))) {
       return scheduler.fetch(request, env as never, ctx as never);
     }
-    return (app as Handler).fetch(request, env, ctx);
+    // The two HTML pages are rendered at most once per PAGE_CACHE_TTL_SECONDS (default 600; 0 turns it off), with
+    // PAGE_CACHE_STALE_SECONDS (default 300) more served stale while one render refreshes them, instead of on every
+    // view; everything else, including /api/*, goes to the app untouched. See cloudflare/page-cache.ts.
+    const edgeCache = (globalThis as { caches?: { default?: CacheLike } }).caches?.default;
+    return servePageCached(
+      request,
+      ctx as WaitUntil,
+      () => (app as Handler).fetch(request, env, ctx),
+      edgeCache,
+      pageCacheOptions(env.PAGE_CACHE_TTL_SECONDS, env.PAGE_CACHE_STALE_SECONDS, (env.CF_VERSION_METADATA as { id?: string } | undefined)?.id),
+    );
   },
   async scheduled(event: unknown, env: Record<string, unknown>, ctx: unknown): Promise<void> {
     const appBinding = { fetch: (input: string | Request, init?: RequestInit) => (app as Handler).fetch(new Request(input, init), env, ctx) };

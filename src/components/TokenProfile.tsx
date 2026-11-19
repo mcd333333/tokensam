@@ -11,6 +11,9 @@ import { HistoryCharts } from "@/components/HistoricalSection";
 import { IndicatorCard, TechnicalIndicators } from "@/components/TechnicalIndicators";
 import { DeepAnalysisPanel } from "@/components/DeepAnalysisPanel";
 import { SourcesMethodology } from "@/components/SourcesMethodology";
+import { applyLivePrices, directFeedEnabled, livePricesUrl } from "@/lib/ui/live-prices";
+import { liveSourceFor } from "@/lib/ui/live-source";
+import { useLivePrices } from "@/lib/ui/use-live-prices";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CopyButton } from "@/components/CopyButton";
 import { PageFooter } from "@/components/AppShell";
@@ -313,7 +316,18 @@ function RootDataSection({ profile }: { profile: RootDataProfile }) {
 }
 
 export function TokenProfile({ data, rootdataProfile }: { data: LiveTokenProfileData; rootdataProfile: RootDataProfile | null }) {
-  const { token } = data;
+  const { token: storedToken } = data;
+  // Live price, 24h change and the figures derived from them, streamed from the exchange that quotes this token
+  // (Coinbase, else Binance) while the tab is visible. The page itself may be served from an edge cache, so this is
+  // what keeps the header current; the stored profile below it is unchanged. A token no exchange quotes keeps its
+  // server-rendered price and opens no connection.
+  const liveSource = liveSourceFor(storedToken.id);
+  const live = useLivePrices(
+    liveSource ? livePricesUrl(process.env.NEXT_PUBLIC_LIVE_PRICES_URL) : null,
+    undefined,
+    { directFeed: directFeedEnabled(process.env.NEXT_PUBLIC_LIVE_PRICES_DIRECT), tokenIds: [storedToken.id] },
+  );
+  const token = useMemo(() => applyLivePrices([storedToken], live)[0], [storedToken, live]);
   const labelKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
   const headerLabels = new Set([token.chain, token.category, data.isNative ? "Native asset" : ""].map(labelKey));
   const projectTags = (Array.isArray(rootdataProfile?.tags) ? rootdataProfile.tags : []).flatMap((tag) => {

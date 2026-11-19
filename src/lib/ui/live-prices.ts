@@ -11,9 +11,12 @@ import type { DashboardToken } from "../../types/token.ts";
  * calls from the browser, and no persistence of any kind. Stored history stays
  * the collector's job.
  *
- * The browser never talks to the exchange directly, which is deliberate: exchange
- * APIs are geo-blocked in some of this project's markets, so a direct connection
- * would simply fail for those viewers. The route sits on Cloudflare's network.
+ * Direct feeds (see coinbase-direct-feed.ts and binance-direct-feed.ts): the browser also opens
+ * Coinbase's public WebSocket for the tokens Coinbase lists and Binance's for the rest, so those
+ * prices cost no Worker request and no Durable Object time per viewer. Exchange APIs are geo-blocked in
+ * some of this project's markets, so a direct connection is only ever an addition: it must deliver data
+ * within seconds to count as healthy, and while either feed is not healthy the route keeps being polled at
+ * LIVE_PRICE_POLL_MS exactly as before. The route also stays the source for the mobile app.
  *
  * The provider id "binance" below is the id of the live-exchange-price slot (see
  * DATASET_LABELS), kept from when only Binance filled it; each entry says whether Coinbase or
@@ -25,7 +28,15 @@ import type { DashboardToken } from "../../types/token.ts";
  * 7-day change computed server-side from `p` against a 7-day opening price. The
  * Coinbase route does not send `c7`, so rows keep their stored 7-day change.
  */
-export type LivePriceEntry = { p: number; c: number; c7?: number; /** which exchange quoted it */ s?: "coinbase" | "binance" };
+export type LivePriceEntry = {
+  p: number;
+  c: number;
+  c7?: number;
+  /** which exchange quoted it */
+  s?: "coinbase" | "binance";
+  /** When this entry was observed (epoch ms). Absent means the response's `asOf` applies. */
+  at?: number;
+};
 export type LivePriceResponse = { asOf: string; prices: Record<string, LivePriceEntry> };
 
 /**
@@ -35,6 +46,68 @@ export type LivePriceResponse = { asOf: string; prices: Record<string, LivePrice
  * (one always-open tab at this interval is ~12,000 Worker requests/day).
  */
 export const LIVE_PRICE_POLL_MS = 7_000;
+
+/**
+ * Poll interval while EVERY direct feed is healthy (Coinbase and Binance both streaming): about a quarter of
+ * the requests of LIVE_PRICE_POLL_MS. It cannot be rarer, because the feeds do not cover everything at once.
+ * Coinbase sends a snapshot of every product on connect, but Binance's miniTicker has none and sends a pair only
+ * when it trades (in a 45 s test, 10 of the 36 Binance-only pairs had not yet), so until a quiet pair trades the
+ * route's last-known price is what keeps its row live. It must stay at most half of LIVE_PRICE_MAX_AGE_MS so one
+ * missed poll does not age those rows out. As soon as either feed is unhealthy the poll returns to
+ * LIVE_PRICE_POLL_MS immediately.
+ */
+export const LIVE_PRICE_POLL_ALL_FEEDS_MS = 30_000;
+
+/**
+ * How often a healthy direct feed re-confirms its last prices. A feed only sends a price when it changes, so
+ * a quiet token's entry would otherwise age past LIVE_PRICE_MAX_AGE_MS while the connection is perfectly fine.
+ * While frames are arriving, silence on a symbol means its price has not changed, so its entry is re-stamped.
+ * Must stay well under LIVE_PRICE_MAX_AGE_MS.
+ */
+export const DIRECT_FEED_RESTAMP_MS = 10_000;
+
+/** Returns the entries with their observation time moved to `at` (a healthy feed confirming its last prices). */
+export function restampEntries(entries: Record<string, LivePriceEntry>, at: number): Record<string, LivePriceEntry> {
+  const out: Record<string, LivePriceEntry> = {};
+  for (const [id, entry] of Object.entries(entries)) out[id] = { ...entry, at };
+  return out;
+}
+
+/** The direct feed is on unless NEXT_PUBLIC_LIVE_PRICES_DIRECT is explicitly "0", "false" or "off" (kill switch). */
+export function directFeedEnabled(value: string | undefined): boolean {
+  return !["0", "false", "off"].includes((value ?? "").trim().toLowerCase());
+}
+
+/**
+ * Combines the polled response with the direct feed, per token: whichever entry was observed more
+ * recently wins, so a feed that stalls hands the row back to the poll instead of freezing it. Every
+ * merged entry carries its own `at`, and `asOf` becomes the newest of them.
+ */
+export function mergeLivePrices(
+  polled: LivePriceResponse | null,
+  direct: Record<string, LivePriceEntry> | null,
+): LivePriceResponse | null {
+  const hasDirect = !!direct && Object.keys(direct).length > 0;
+  if (!hasDirect) return polled;
+  const polledAt = polled ? Date.parse(polled.asOf) : Number.NaN;
+  const prices: Record<string, LivePriceEntry> = {};
+  if (polled) {
+    for (const [id, entry] of Object.entries(polled.prices)) {
+      prices[id] = Number.isFinite(entry.at) || !Number.isFinite(polledAt) ? entry : { ...entry, at: polledAt };
+    }
+  }
+  for (const [id, entry] of Object.entries(direct)) {
+    const current = prices[id];
+    if (!current || (Number.isFinite(entry.at) && (entry.at as number) > (Number.isFinite(current.at) ? (current.at as number) : -Infinity))) {
+      prices[id] = entry;
+    }
+  }
+  let newest = Number.isFinite(polledAt) ? polledAt : -Infinity;
+  for (const entry of Object.values(prices)) {
+    if (Number.isFinite(entry.at) && (entry.at as number) > newest) newest = entry.at as number;
+  }
+  return { asOf: new Date(Number.isFinite(newest) ? newest : Date.now()).toISOString(), prices };
+}
 
 /**
  * A payload older than this is ignored rather than displayed.
@@ -66,12 +139,16 @@ export function applyLivePrices(
   const asOf = Date.parse(response.asOf);
   if (!Number.isFinite(asOf) || now - asOf > LIVE_PRICE_MAX_AGE_MS) return tokens;
 
-  const collectedAt = new Date(asOf).toISOString();
   let changed = false;
   const next = tokens.map((token) => {
     // The route keys prices by canonical token id: the exchange mapping is resolved server-side.
     const live = response.prices[token.id];
     if (!live || !Number.isFinite(live.p) || !Number.isFinite(live.c)) return token;
+    // An entry carries its own observation time when it came from the direct feed or a merge; it is
+    // judged on that, so one stalled source cannot keep a stale price alive behind a fresh asOf.
+    const observedAt = Number.isFinite(live.at) ? (live.at as number) : asOf;
+    if (now - observedAt > LIVE_PRICE_MAX_AGE_MS) return token;
+    const collectedAt = new Date(observedAt).toISOString();
     // c7 is supplementary: a missing or unusable one leaves the stored 7-day change alone.
     const live7d = Number.isFinite(live.c7) ? (live.c7 as number) : null;
     // Market cap and Vol / mcap derive from the price, so price being unchanged is enough
@@ -83,8 +160,8 @@ export function applyLivePrices(
       providerId: "binance" as const,
       collectedAt,
       note: live.s === "binance"
-        ? "Binance spot last trade, USDT-quoted (a USD proxy, not USD), polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average."
-        : "Coinbase spot last trade, USD-quoted, polled live in the browser. Single-venue price for the fungible asset, not a cross-venue average.",
+        ? "Binance spot last trade, USDT-quoted (a USD proxy, not USD), live in the browser. Single-venue price for the fungible asset, not a cross-venue average."
+        : "Coinbase spot last trade, USD-quoted, live in the browser. Single-venue price for the fungible asset, not a cross-venue average.",
     };
     /**
      * Market cap is price x circulating supply, and supply does not move in seconds, so a

@@ -568,12 +568,14 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
 .methodology-chevron { width: 8px; height: 8px; margin-left: auto; border-right: 1px solid var(--gold); border-bottom: 1px solid var(--gold); transform: rotate(45deg); transition: transform .15s ease; }
 .methodology[open] .methodology-chevron { transform: rotate(225deg); }
 .methodology-body { display: grid; gap: 16px; padding: 4px 20px 20px; border-top: 1px solid var(--line-soft); }
-.methodology-lede { max-width: 72ch; margin: 16px 0 0; color: var(--ink); font-size: 14px; line-height: 1.65; }
-.methodology-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px 36px; }
+.methodology-lede { max-width: none; margin: 16px 0 0; color: var(--ink); font-size: 14px; line-height: 1.65; text-align: justify; text-justify: inter-word; }
+.methodology-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px 36px; }
 .methodology-grid h3 { margin: 0 0 10px; }
 .methodology-grid h3 + .method-list { margin-top: 0; }
-.methodology-grid .freshness-list { margin-bottom: 14px; }
 .methodology-grid .methodology-subhead { margin-top: 20px; }
+/* The data-treatment parameters run in two columns across the full width; items are never split between columns. */
+.method-list.method-list-columns { display: block; columns: 2; column-gap: 36px; }
+.method-list-columns li { break-inside: avoid; margin-bottom: 6px; }
 .methodology-note { max-width: 60ch; margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
 .methodology-note b { color: var(--ink-strong); }
 .method-list, .note-list { display: grid; gap: 6px; margin: 0; padding-left: 16px; color: var(--muted); font-size: 13px; line-height: 1.6; }
@@ -683,6 +685,8 @@ h3 { color: var(--muted); font-size: 11px; font-weight: 650; letter-spacing: .12
   .methodology > summary { padding: 14px 16px; }
   .methodology-body { padding: 4px 16px 16px; }
   .methodology-grid { grid-template-columns: 1fr; }
+  .method-list.method-list-columns { columns: 1; }
+  .methodology-lede { text-align: left; }
   .formula-list div, .identifier-list div { grid-template-columns: 1fr; }
 }
 

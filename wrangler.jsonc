@@ -14,6 +14,9 @@
   "durable_objects": { "bindings": [{ "name": "PRICE_STREAM", "class_name": "PriceStream" }] },
   "migrations": [{ "tag": "v1-price-stream", "new_sqlite_classes": ["PriceStream"] }],
   "images": { "binding": "IMAGES" },
+  // The id of the deployed Worker version, which cloudflare/page-cache.ts puts in every cache key so that pages cached
+  // by one build are never served by the next (their hashed JS/CSS files no longer exist after a deploy).
+  "version_metadata": { "binding": "CF_VERSION_METADATA" },
   // Market-data jobs run every 5 minutes; RootData checks daily and only pulls financial summaries when due (14 days).
   "triggers": { "crons": ["*/5 * * * *", "0 4 * * *"] },
   // Keep variables added in the dashboard (Supabase, AI keys, ...) across deploys.
