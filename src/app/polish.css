@@ -1,0 +1,131 @@
+/*
+ * Polish layer. Loaded after globals.css; refines depth, motion, and states on
+ * top of the existing samurai theme (charcoal, crimson, gold, blade rules).
+ * Presentation only: no layout contract, markup, or behaviour depends on it.
+ */
+
+/* ---------- Canvas, scrolling, motion ---------- */
+html { scroll-behavior: smooth; scrollbar-color: #2f3239 var(--canvas); }
+/* A low crimson sun and a faint gold floor glow behind every page. */
+body::before { position: fixed; inset: 0; z-index: -1; background: radial-gradient(ellipse 55% 40% at 88% -8%, rgb(195 50 43 / 10%), transparent 70%), radial-gradient(ellipse 45% 35% at 35% 108%, rgb(205 172 104 / 5%), transparent 70%); content: ""; pointer-events: none; }
+a, button, select, summary { -webkit-tap-highlight-color: transparent; }
+.text-button, .copy-button, .segmented button, .pagination-button, .filters select, .search-field, .section-nav a, .asset-name, .sort-button, .sort-mark { transition: color .15s ease, border-color .15s ease, background-color .15s ease, box-shadow .15s ease; }
+
+@keyframes polish-rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes polish-pulse { 0% { box-shadow: 0 0 0 0 rgb(139 201 172 / 55%); } 70%, 100% { box-shadow: 0 0 0 7px rgb(139 201 172 / 0%); } }
+@keyframes polish-pulse-stale { 0% { box-shadow: 0 0 0 0 rgb(214 164 74 / 55%); } 70%, 100% { box-shadow: 0 0 0 7px rgb(214 164 74 / 0%); } }
+
+/* ---------- Sidebar ---------- */
+/* Desktop only: below 1025px the sidebar is the translucent top bar from globals.css. */
+@media (min-width: 1025px) {
+  .sidebar { border-image: linear-gradient(180deg, rgb(205 172 104 / 38%), var(--line) 34%, var(--line)) 1; background: linear-gradient(180deg, #0b0c0f 0, #101115 240px); scrollbar-color: #2a2c33 transparent; }
+}
+/* The emblem sits on opaque black; lighten drops that black onto the sidebar so the artwork has no visible box. */
+.sidebar-brand img { mix-blend-mode: lighten; transition: filter .2s ease; }
+.sidebar-brand:hover img { filter: brightness(1.12); }
+.movers-heading { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.movers-heading::before { width: 10px; height: 1px; flex: 0 0 10px; background: var(--crimson-bright); transform: rotate(-35deg); content: ""; }
+.movers-heading::after { height: 1px; flex: 1; background: linear-gradient(90deg, var(--line-strong), transparent); content: ""; }
+.sidebar-movers { border-top: 0; padding-top: 4px; }
+.movers-label { padding-top: 4px; }
+.mover-row { transition: background-color .12s ease, box-shadow .12s ease, color .12s ease; }
+.mover-row:hover { box-shadow: inset 2px 0 0 var(--crimson); }
+.mover-row .token-logo { box-shadow: 0 0 0 1px rgb(255 255 255 / 7%); transition: opacity .12s ease; }
+.sidebar-foot { border-top: 0; background: linear-gradient(90deg, var(--line-strong), transparent) top left / 100% 1px no-repeat; }
+
+/* ---------- Hero ---------- */
+.samurai-hero { border-color: rgb(205 172 104 / 20%); box-shadow: 0 30px 60px -36px rgb(0 0 0 / 90%), inset 0 1px 0 rgb(255 255 255 / 4%); }
+.samurai-hero::after { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: linear-gradient(90deg, var(--crimson-bright) 0 34px, var(--gold) 34px, rgb(205 172 104 / 30%) 30%, transparent 62%); content: ""; pointer-events: none; }
+.hero-title { text-wrap: balance; }
+.samurai-hero .hero-lede { text-wrap: pretty; }
+.hero-explore { min-height: 44px; gap: 22px; padding: 0 18px; border-color: #e06a5d; background: linear-gradient(180deg, #cf4c40, #ac372e); box-shadow: 0 10px 24px -10px rgb(195 50 43 / 80%), inset 0 1px 0 rgb(255 255 255 / 20%); font-size: 13px; letter-spacing: .03em; transition: transform .15s ease, box-shadow .15s ease, filter .15s ease; }
+.hero-explore:hover { background: linear-gradient(180deg, #cf4c40, #ac372e); box-shadow: 0 14px 28px -10px rgb(224 73 63 / 85%), inset 0 1px 0 rgb(255 255 255 / 26%); filter: brightness(1.1); transform: translateY(-1px); }
+.hero-explore:active { transform: translateY(0); filter: brightness(.96); }
+.hero-explore svg { transition: transform .18s ease; }
+.hero-explore:hover svg { transform: translate(2px, -2px); }
+.hero-card { background: linear-gradient(135deg, rgb(24 21 20 / 86%), rgb(10 12 14 / 82%)); backdrop-filter: blur(6px); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease; }
+.hero-card:hover { border-color: rgb(205 172 104 / 90%); box-shadow: inset 0 0 0 4px rgb(10 11 13 / 70%), inset 0 0 0 5px rgb(205 172 104 / 30%), 0 14px 30px -10px rgb(0 0 0 / 70%); transform: translateY(-2px); }
+.hero-card-status { width: 6px; height: 6px; flex-basis: 6px; animation: polish-pulse 2.4s ease-out infinite; }
+.hero-card-status.stale { animation-name: polish-pulse-stale; }
+@media (prefers-reduced-motion: no-preference) {
+  .samurai-hero .hero-copy > *, .hero-card { animation: polish-rise .55s cubic-bezier(.2, .7, .2, 1) backwards; }
+  .samurai-hero .hero-copy > :nth-child(2) { animation-delay: .06s; }
+  .samurai-hero .hero-copy > :nth-child(3) { animation-delay: .12s; }
+  .samurai-hero .hero-copy > :nth-child(4) { animation-delay: .18s; }
+  .hero-card:nth-child(1) { animation-delay: .14s; }
+  .hero-card:nth-child(2) { animation-delay: .2s; }
+  .hero-card:nth-child(3) { animation-delay: .26s; }
+  .hero-card:nth-child(4) { animation-delay: .32s; }
+}
+
+/* ---------- Market overview strip ---------- */
+.summary-strip { position: relative; overflow: hidden; background: linear-gradient(180deg, var(--surface-raised), var(--surface) 70%); box-shadow: 0 18px 40px -30px rgb(0 0 0 / 90%), inset 0 1px 0 rgb(255 255 255 / 3%); }
+.summary-strip::before { position: absolute; top: 0; left: 0; z-index: 1; width: min(420px, 55%); height: 1px; background: linear-gradient(90deg, var(--crimson-bright) 0 18px, var(--gold) 18px, transparent); content: ""; }
+.stat { transition: background-color .15s ease; }
+.stat:hover { background: rgb(255 255 255 / 1.8%); }
+@media (min-width: 1025px) { .stat strong { font-size: 27px; } }
+.breadth-bar { height: 6px; gap: 2px; border-radius: 3px; background: transparent; }
+.breadth-up, .breadth-down { border-radius: 3px; }
+
+/* ---------- Research Universe ---------- */
+.asset-count { border-color: rgb(205 172 104 / 30%); background: var(--gold-soft); color: var(--gold); font-weight: 550; font-variant-numeric: tabular-nums; }
+.filters { background: linear-gradient(180deg, var(--surface-raised), var(--surface)); }
+.search-field:hover, .filters select:hover { border-color: #4b4f58; }
+.search-field:focus-within { border-color: var(--crimson); }
+/* A filter that is narrowing the list reads as engaged, so it is obvious why rows are missing. */
+.filters select:not(.mobile-sort):has(option:not([value="all"]):checked) { border-color: rgb(205 172 104 / 55%); background-color: rgb(205 172 104 / 7%); color: var(--ink-strong); }
+.text-button.reset { padding: 6px 10px; border: 1px solid rgb(205 172 104 / 30%); border-radius: var(--radius); text-decoration: none; }
+.text-button.reset:hover { border-color: var(--crimson-bright); }
+.table-frame { scrollbar-color: #33363d transparent; box-shadow: 0 24px 50px -36px rgb(0 0 0 / 90%); }
+.token-table thead th { background: #16181d; color: var(--subtle); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+.token-table thead .asset-col { background: #16181d; }
+.token-table thead th[aria-sort="ascending"], .token-table thead th[aria-sort="descending"] { box-shadow: inset 0 -2px 0 var(--crimson); color: var(--ink-strong); }
+.sort-button { letter-spacing: inherit; text-transform: inherit; }
+.sort-button:hover .sort-mark:not(.active) { color: var(--gold); }
+.token-table td { transition: background-color .12s ease; }
+.token-table td[data-label="Price"] { color: var(--ink-strong); font-weight: 600; }
+.token-table .token-logo { box-shadow: 0 0 0 1px rgb(255 255 255 / 7%); }
+.chip-quiet { border-radius: 4px; background: rgb(255 255 255 / 2.5%); }
+@media (min-width: 721px) {
+  .token-table tbody .asset-col { transition: background-color .12s ease, box-shadow .12s ease; }
+  .token-table tbody tr:hover .asset-col, .token-table tbody tr:focus-within .asset-col { box-shadow: inset 2px 0 0 var(--crimson); }
+}
+@media (max-width: 720px) {
+  .token-table tr { transition: border-color .15s ease; }
+  .token-table tr:active { border-color: rgb(205 172 104 / 45%); }
+}
+.pagination { gap: 14px; padding-top: 18px; }
+.pagination-button { display: inline-flex; align-items: center; gap: 8px; }
+.pagination-button:hover:not(:disabled) { background: var(--gold-soft); }
+.pagination-button:active:not(:disabled) { transform: translateY(1px); }
+.pagination-button[data-testid="pagination-prev"]::before { color: var(--gold); content: "←"; }
+.pagination-button[data-testid="pagination-next"]::after { color: var(--gold); content: "→"; }
+.pagination-button:disabled::before, .pagination-button:disabled::after { color: inherit; }
+.pagination-status { padding: 0 6px; }
+.page-footer { position: relative; border-top: 0; }
+.page-footer::before { position: absolute; top: 0; right: 0; left: 0; height: 1px; background: linear-gradient(90deg, var(--crimson) 0 16px, rgb(205 172 104 / 45%) 16px, var(--line-soft) 40%, transparent); content: ""; }
+
+/* ---------- Token profile ---------- */
+.profile-page .profile-header { box-shadow: 0 30px 60px -40px rgb(0 0 0 / 90%), inset 0 1px 0 rgb(255 255 255 / 4%); }
+.profile-page .profile-header::before { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; background: linear-gradient(90deg, var(--crimson-bright) 0 34px, var(--gold) 34px, rgb(205 172 104 / 30%) 30%, transparent 62%); content: ""; pointer-events: none; }
+.profile-report-button { transition: border-color .15s ease, background-color .15s ease, transform .15s ease; }
+.profile-report-button:hover { transform: translateY(-1px); }
+.report-arrow { transition: transform .18s ease; }
+.profile-report-button:hover .report-arrow { transform: translateX(3px); }
+.tile, .chart-card, .indicator-card, .exchange-box, .pool-row, .signal, .rootdata-fact, .profile-page .snapshot-pair, .profile-page .metric-list, .supply-composition { transition: border-color .15s ease, box-shadow .15s ease; }
+.tile:hover, .chart-card:hover, .indicator-card:hover, .exchange-box:hover, .pool-row:hover, .rootdata-fact:hover, .profile-page .snapshot-pair:hover, .profile-page .metric-list:hover { border-color: var(--line-strong); box-shadow: 0 14px 30px -22px rgb(0 0 0 / 90%); }
+.profile-page .snapshot-pair .tile:hover { box-shadow: none; }
+/* The exchange group headings carry a caption; give it the same gap the other subsection headings have. */
+#exchanges h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 18px 0 8px; }
+#exchanges h3 small { color: var(--subtle); font-size: 11px; font-weight: 500; letter-spacing: .06em; }
+#exchanges h3 + .exchange-grid { margin-top: 0; }
+.indicator-method summary:hover, .pool-details > summary:hover { color: var(--gold); }
+.methodology { transition: border-color .15s ease; }
+.methodology:hover, .methodology[open] { border-color: var(--line-strong); }
+.ai-generate-button { transition: border-color .15s ease, background-color .15s ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .hero-card-status { animation: none; }
+  .hero-card:hover, .hero-explore:hover, .profile-report-button:hover { transform: none; }
+}

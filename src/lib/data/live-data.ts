@@ -996,7 +996,14 @@ async function getLiveTokenProfileUncached(
     client.from("chains").select("id,name").eq("id", tokenRow.chain_id).maybeSingle(),
     readLatest(client, [tokenId]).then(async (latest) => mergeById(
       latest,
-      await readObservationWindow<DbObservation>(client, [tokenId], HISTORY_SERIES, new Date(Date.now() - HISTORY_DAYS * DAY_MS)),
+      await readObservationWindow<DbObservation>(client, [tokenId], HISTORY_SERIES, new Date(Date.now() - HISTORY_DAYS * DAY_MS))
+        .catch((error: unknown) => {
+          if (!includeLiveBinance || !(error instanceof Error) || !error.message.includes("canceling statement due to statement timeout")) {
+            throw error;
+          }
+          console.warn('Token price history timed out for ' + tokenId + '; rendering latest observations.');
+          return [];
+        }),
       // Binance's live price + 24h change (see fetchLiveBinanceObservations) -- fetched
       // live, not read from Supabase.
       includeLiveBinance ? await fetchLiveBinanceObservations([tokenId]) : [],

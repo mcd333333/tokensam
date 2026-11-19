@@ -1,0 +1,83 @@
+.hero {
+  display: grid;
+  min-height: 250px;
+  align-items: end;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, #101115 5%, #101115aa 48%, #10111538), url("/brand/token-samurai-hero.png") center / cover;
+}
+
+.heading {
+  padding: clamp(22px, 5vw, 54px);
+}
+
+.heading h1 {
+  color: var(--ink-strong);
+  font-family: var(--font-display);
+  font-size: clamp(30px, 5vw, 54px);
+  line-height: 1.15;
+}
+
+.heading p {
+  max-width: 26rem;
+  margin-top: 10px;
+  color: var(--ink);
+}
+
+.platforms {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(230px, 100%), 1fr));
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.platform {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: 14px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+}
+
+.platform h2 {
+  color: var(--ink-strong);
+  font-size: 19px;
+}
+
+.platform p {
+  color: var(--muted);
+}
+
+.install {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 10px;
+  padding: 8px 14px;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  color: var(--gold);
+  text-decoration: none;
+}
+
+.install:hover {
+  background: var(--gold);
+  color: #101115;
+}
+
+.dashboard {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: var(--gold);
+}
+
+@media (max-width: 580px) {
+  .hero {
+    min-height: 200px;
+    background-position: 62% center;
+  }
+}

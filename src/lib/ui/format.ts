@@ -25,6 +25,30 @@ export function formatUsd(value: number | null | undefined, compact = false): st
   }).format(value);
 }
 
+export function historyPriceFormatters(ticks: readonly number[], latestPrice?: number) {
+  const compactLabels = new Set(ticks.map((tick) => formatUsd(tick, true)));
+  let fractionDigits = 2;
+  let tickFormatter: Intl.NumberFormat | undefined;
+
+  if (compactLabels.size < ticks.length) {
+    // Keep the full tick interval legible, including steps like $0.00005.
+    while (fractionDigits < 20 && ticks.some((tick) => Number(tick.toFixed(fractionDigits)) !== tick)) {
+      fractionDigits++;
+    }
+    tickFormatter = new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "USD", minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits,
+    });
+  }
+
+  const valueFormatter = tickFormatter || formatUsd(latestPrice, true) === "$1"
+    ? new Intl.NumberFormat("en-US", {
+      style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: Math.max(6, fractionDigits),
+    })
+    : undefined;
+
+  return { tick: tickFormatter?.format, value: valueFormatter?.format };
+}
+
 /** Directional change (price move, growth over a stated interval). */
 export function formatChange(value: number | null | undefined): Formatted | null {
   if (!isValidNumber(value)) return null;

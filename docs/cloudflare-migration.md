@@ -7,7 +7,8 @@ free plan's 10 ms CPU and 50-subrequest limits cannot run the pages or the cron 
 **One Worker does everything.** `wrangler.jsonc` (repo root) deploys the existing
 `token-samurai-refresh-scheduler` Worker in place: `cloudflare/worker-entry.ts` serves the website and
 `/api/*` through the OpenNext build, keeps the scheduler's `/binance-prices` and `/coingecko-proxy`
-routes, and runs the 5-minute cron, which calls the app's `/api/cron/*` routes in-process. Its existing
+routes, and runs the 5-minute market-data cron plus a daily RootData due-check, which calls the app's
+`/api/cron/*` routes in-process. Its existing
 secrets (`CRON_SECRET`, `COINGECKO_API_KEY`, `RESEND_API_KEY`) are kept, and `keep_vars` preserves
 variables added in the dashboard.
 
@@ -19,7 +20,7 @@ variables added in the dashboard.
    - Build command: `pnpm install --frozen-lockfile && pnpm exec opennextjs-cloudflare build`
    - Deploy command: `pnpm exec wrangler deploy`
 2. **Add the variables and secrets the app needs** (Settings, Variables and Secrets), same names as `.env.example`:
-   `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `COINGECKO_API_PLAN`, `GECKOTERMINAL_SYNC_ENABLED=true`, the AI provider
+   `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ROOTDATA_API_KEY`, `COINGECKO_API_PLAN`, `GECKOTERMINAL_SYNC_ENABLED=true`, the AI provider
    keys and any other values the Vercel project had. `CRON_SECRET` and `COINGECKO_API_KEY` already exist here.
    Leave `COINGECKO_PROXY_URL` unset: the app now egresses from Cloudflare, the same network the proxy used.
 3. **Trigger a build** (push, or Retry deployment). Open the Worker's `workers.dev` URL: the home page and a token profile.

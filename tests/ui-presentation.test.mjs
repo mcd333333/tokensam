@@ -5,7 +5,7 @@ import { canonicalTokens } from "../src/data/canonical-tokens.ts";
 import { tokenCoverage } from "../src/data/provider-coverage.ts";
 import { attachDashboardExtras, buildTokenHistory, latestCalculatedValues } from "../src/lib/data/live-data.ts";
 import { logosFromRecords, validatedLogoUrl } from "../src/lib/data/token-logos.ts";
-import { formatChange, formatRatio, formatShare, formatUsd, intervalBetween } from "../src/lib/ui/format.ts";
+import { formatChange, formatRatio, formatShare, formatUsd, historyPriceFormatters, intervalBetween } from "../src/lib/ui/format.ts";
 import { metricSection, presentMetric } from "../src/lib/ui/calculated.ts";
 import { buildProfileModel } from "../src/lib/ui/profile-model.ts";
 import { COLUMNS, EMPTY_FILTERS, PAGE_SIZE, clampPage, filterRows, missingReason, pageCount, paginateRows, researchColumns, sortRows, toRow, universeSummary } from "../src/lib/ui/dashboard-model.ts";
@@ -73,6 +73,23 @@ test("1. formatters keep a legitimate zero and never turn a missing value into z
   assert.equal(formatShare(0.23), "0.23%", "a share carries no sign");
   assert.deepEqual(formatChange(0), { text: "0.00%", tone: "flat" });
   assert.equal(formatChange(undefined), null);
+});
+
+test("price history distinguishes close USD ticks and preserves the observed price on both sides of $1", () => {
+  const tether = historyPriceFormatters([0.9987, 0.999, 0.9993, 0.9996, 0.9999], 0.999227);
+  assert.deepEqual([0.9987, 0.999, 0.9993, 0.9996, 0.9999].map(tether.tick), [
+    "$0.9987", "$0.9990", "$0.9993", "$0.9996", "$0.9999",
+  ]);
+  assert.equal(tether.value(0.999227), "$0.999227");
+
+  const nearPeg = historyPriceFormatters([0.9999, 0.99995, 1, 1.00005, 1.0001], 1.000027);
+  assert.deepEqual([0.99995, 1, 1.00005].map(nearPeg.tick), ["$0.99995", "$1.00000", "$1.00005"]);
+  assert.equal(nearPeg.value(1.000027), "$1.000027");
+
+  assert.equal(historyPriceFormatters([], 0.999227).value(0.999227), "$0.999227");
+  assert.deepEqual(historyPriceFormatters([90_000, 95_000, 100_000], 98_000), {
+    tick: undefined, value: undefined,
+  });
 });
 
 test("1b. formatChange reports a direction (tone) for every non-zero value, positive or negative", () => {

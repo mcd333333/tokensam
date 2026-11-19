@@ -3,7 +3,7 @@
 Phase 11B keeps Supabase current without running each collector by hand. A single server-side orchestrator runs the CoinGecko, Binance, DEX Screener, and DeFiLlama collectors, recalculates metrics, and records the outcome. The browser never calls a provider. It only reads Supabase through the server.
 
 ```
-Vercel Cron (hourly) ─► GET /api/cron/refresh  (Bearer CRON_SECRET)
+Cloudflare Cron (*/5 * * * *) ─► GET /api/cron/refresh  (Bearer CRON_SECRET)
 pnpm refresh ─────────┐          │
                       ▼          ▼
                runDataRefresh (src/lib/refresh/orchestrator.ts)
@@ -55,15 +55,9 @@ Intervals and thresholds live in [`src/lib/refresh/config.ts`](../src/lib/refres
 
 ## Scheduler
 
-[`vercel.json`](../vercel.json) registers a Vercel Cron job for `/api/cron/refresh` at `7 * * * *` (hourly). When `CRON_SECRET` is set on the Vercel project, Vercel sends `Authorization: Bearer <CRON_SECRET>`. The route compares it in constant time and returns `401` otherwise. It also refuses every request if no secret, or a secret under 16 characters, is configured. The route sets `maxDuration = 300`.
+The existing `token-samurai-refresh-scheduler` Cloudflare Worker serves the app and owns its schedules in [`wrangler.jsonc`](../wrangler.jsonc). Its `*/5 * * * *` trigger calls `/api/cron/refresh` and the other market-data routes with `Authorization: Bearer <CRON_SECRET>`. The route compares the secret in constant time, returns `401` for unauthorized requests, and sets `maxDuration = 300`.
 
-**Vercel plan limits** ([Vercel docs](https://vercel.com/docs/cron-jobs/usage-and-pricing)):
-- **Pro and Enterprise** run hourly crons within the scheduled minute.
-- **Hobby** allows only **once-per-day** crons, and an hourly expression **fails deployment**. On Hobby, change the schedule to a daily one (for example `7 6 * * *`). Every provider is then due on each run. Alternatively, trigger the endpoint hourly from an external scheduler that can send the bearer header.
-
-Vercel doesn't retry failed cron invocations and may occasionally skip or duplicate one. The due check and the lock make both safe.
-
-Nothing is deployed by this phase.
+The same Worker checks RootData once per day at `0 4 * * *` (04:00 UTC). It calls `/api/cron/rootdata`, which refreshes only funding and investor summaries at least 14 days old. The handler branches on the cron expression because Cloudflare sends all configured schedules to the same `scheduled()` handler. See the [RootData integration guide](rootdata-integration.md) and [Cloudflare migration notes](cloudflare-migration.md).
 
 ## Manual refresh (development)
 

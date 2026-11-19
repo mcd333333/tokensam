@@ -1,5 +1,12 @@
 import { BINANCE_SYMBOLS } from "./binance-symbols.ts";
 
+// The app's DOM typings omit Cloudflare's process-wide default cache binding.
+declare global {
+  interface CacheStorage {
+    readonly default: Cache;
+  }
+}
+
 export interface Env {
   /** Base URL of the app deployment, e.g. "https://tokensam.<subdomain>.workers.dev" (no trailing slash needed). */
   REFRESH_URL: string;
@@ -27,6 +34,7 @@ export interface Env {
 
 const COINGECKO_PROXY_PREFIX = "/coingecko-proxy";
 const LIVE_PRICES_PATH = "/binance-prices";
+const ROOTDATA_DAILY_CHECK_CRON = "0 4 * * *";
 
 /**
  * Seconds a live-price response is cached at the edge.
@@ -269,16 +277,14 @@ async function sendQuotaAlert(env: Env, level: string, reasons: string[], usage:
  * routes label the run "scheduled" instead of "manual" (they cannot see Vercel's own
  * `x-vercel-cron-schedule` header from here, since this call is not Vercel Cron itself).
  */
-let appBinding: Env["APP"] = undefined;
-
-async function callRoute(baseUrl: string, path: string, secret: string): Promise<RouteResult> {
-  const url = `${baseUrl.replace(/\/$/, "")}${path}`;
+async function callRoute(env: Env, path: string): Promise<RouteResult> {
+  const url = `${env.REFRESH_URL.replace(/\/$/, "")}${path}`;
   try {
-    const send = appBinding ? appBinding.fetch.bind(appBinding) : fetch;
+    const send = env.APP ? env.APP.fetch.bind(env.APP) : fetch;
     const response = await send(url, {
       method: "GET",
       headers: {
-        authorization: `Bearer ${secret}`,
+        authorization: `Bearer ${env.CRON_SECRET}`,
         "x-scheduled-by": "cloudflare-worker",
       },
     });
@@ -331,13 +337,12 @@ function refreshFinished(result: RouteResult): boolean {
  * attempt, so the extra database work is skipped for this tick rather than stacked on top of it.
  */
 async function run(env: Env): Promise<RouteResult[]> {
-  appBinding = env.APP;
   if (!env.REFRESH_URL || !env.CRON_SECRET) {
     console.error("refresh-scheduler: REFRESH_URL and CRON_SECRET must both be configured (see wrangler.toml).");
     return [];
   }
 
-  const refreshResult = await callRoute(env.REFRESH_URL, "/api/cron/refresh", env.CRON_SECRET);
+  const refreshResult = await callRoute(env, "/api/cron/refresh");
   if (refreshResult.error) console.error(`refresh-scheduler: /api/cron/refresh request failed: ${refreshResult.error}`);
   else console.log(`refresh-scheduler: /api/cron/refresh -> ${refreshResult.status} ${refreshResult.body.slice(0, 500)}`);
 
@@ -368,7 +373,7 @@ async function run(env: Env): Promise<RouteResult[]> {
   // slices, which that provider answered with HTTP 429 on ~85% of requests from Cloudflare's addresses.
   let dexPaprikaResult: RouteResult | null = null;
   if (refreshFinished(refreshResult)) {
-    dexPaprikaResult = await callRoute(env.REFRESH_URL, "/api/cron/dexpaprika?slice=6", env.CRON_SECRET);
+    dexPaprikaResult = await callRoute(env, "/api/cron/dexpaprika?slice=6");
     if (dexPaprikaResult.error) console.error(`refresh-scheduler: /api/cron/dexpaprika request failed: ${dexPaprikaResult.error}`);
     else console.log(`refresh-scheduler: /api/cron/dexpaprika -> ${dexPaprikaResult.status} ${dexPaprikaResult.body.slice(0, 300)}`);
   } else {
@@ -384,7 +389,7 @@ async function run(env: Env): Promise<RouteResult[]> {
   // is a cheap no-op. A hard monthly call cap lives in the route; see /api/cron/exchanges.
   let exchangesResult: RouteResult | null = null;
   if (refreshFinished(refreshResult)) {
-    exchangesResult = await callRoute(env.REFRESH_URL, "/api/cron/exchanges?slice=8", env.CRON_SECRET);
+    exchangesResult = await callRoute(env, "/api/cron/exchanges?slice=8");
     if (exchangesResult.error) console.error(`refresh-scheduler: /api/cron/exchanges request failed: ${exchangesResult.error}`);
     else console.log(`refresh-scheduler: /api/cron/exchanges -> ${exchangesResult.status} ${exchangesResult.body.slice(0, 300)}`);
   }
@@ -396,8 +401,27 @@ async function run(env: Env): Promise<RouteResult[]> {
   return [refreshResult, ...(dexPaprikaResult ? [dexPaprikaResult] : []), ...(exchangesResult ? [exchangesResult] : [])];
 }
 
+async function runRootDataRefresh(env: Env): Promise<void> {
+  if (!env.REFRESH_URL || !env.CRON_SECRET) {
+    console.error("refresh-scheduler: REFRESH_URL and CRON_SECRET must be configured for RootData refresh.");
+    return;
+  }
+
+  const result = await callRoute(env, "/api/cron/rootdata");
+  if (!isSuccessfulResponse(result)) {
+    throw new Error(`RootData refresh failed: ${result.error ?? `HTTP ${result.status}`}`);
+  }
+  console.log(`refresh-scheduler: /api/cron/rootdata -> ${result.status} ${result.body.slice(0, 500)}`);
+}
+
 export default {
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (event.cron === ROOTDATA_DAILY_CHECK_CRON) {
+      // A full 148-project batch takes about 2.5 minutes at RootData's request rate limit.
+      // Await it so the scheduled invocation stays alive for the complete batch.
+      await runRootDataRefresh(env);
+      return;
+    }
     ctx.waitUntil(run(env));
   },
   // A plain GET lets the deployment be smoke-tested from a browser/curl without waiting for

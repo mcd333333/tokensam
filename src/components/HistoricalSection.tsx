@@ -1,14 +1,15 @@
 "use client";
 
 import { useId, useState } from "react";
-import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, getNiceTickValues, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { HistoricalMetric, HistoricalPeriod, HistoryChartKey, TokenHistoricalData } from "@/types/historical-data";
 import { HISTORICAL_PERIODS, coverageChangePct, pointsInPeriod, riskProfile } from "@/lib/data/historical-series";
 import { directionStops, trendColors } from "@/lib/ui/direction-stops";
-import { formatChange, formatDuration, formatUsd } from "@/lib/ui/format";
+import { formatChange, formatDuration, formatUsd, historyPriceFormatters } from "@/lib/ui/format";
 
 // Charts connect stored observations and derived daily means; below this count each point is drawn.
 const MAX_POINTS_WITH_DOTS = 40;
+const PRICE_TICK_COUNT = 5;
 const SERIES: Record<HistoricalMetric, { label: string; color: string }> = {
   priceUsd: { label: "Price", color: "#d0443b" },
   volumeUsd: { label: "Volume · 24h", color: "#c9a45c" },
@@ -22,17 +23,17 @@ function utcLabel(time: number, withTime = true) {
     : { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
-type TooltipProps = { active?: boolean; label?: number | string; payload?: { value?: number | string; payload?: { aggregation?: { method: "arithmetic_mean"; sampleCount: number } } }[]; seriesLabel: string };
+type TooltipProps = { active?: boolean; label?: number | string; payload?: { value?: number | string; payload?: { aggregation?: { method: "arithmetic_mean"; sampleCount: number } } }[]; seriesLabel: string; formatValue?: (value: number) => string };
 
 /** Date/time, series name, and value only; provenance IDs are never shown here. */
-function ChartTooltip({ active, label, payload, seriesLabel }: TooltipProps) {
+function ChartTooltip({ active, label, payload, seriesLabel, formatValue }: TooltipProps) {
   if (!active || !payload?.length) return null;
   const value = Number(payload[0]?.value);
   const aggregation = payload[0]?.payload?.aggregation;
   return (
     <div className="chart-tooltip">
       <span>{utcLabel(Number(label))} UTC</span>
-      <strong>{formatUsd(value)}</strong>
+      <strong>{Number.isFinite(value) && formatValue ? formatValue(value) : formatUsd(value)}</strong>
       <small>{aggregation
         ? `UTC daily average · ${aggregation.sampleCount} source ${aggregation.sampleCount === 1 ? "value" : "values"}`
         : seriesLabel}</small>
@@ -49,6 +50,13 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
   const chartPoints = points.map((item) => ({ time: Date.parse(item.timestamp), valueUsd: item.valueUsd, aggregation: item.aggregation }));
   const latest = points.at(-1);
   const hasTrend = coverage.status === "available";
+  let priceFormats: ReturnType<typeof historyPriceFormatters> | undefined;
+  if (metric === "priceUsd") {
+    const domain = points.reduce<[number, number]>(([min, max], { valueUsd }) =>
+      [Math.min(min, valueUsd), Math.max(max, valueUsd)], [Infinity, -Infinity]);
+    const ticks = hasTrend && points.length ? getNiceTickValues(domain, PRICE_TICK_COUNT, true, "adaptive") : [];
+    priceFormats = historyPriceFormatters(ticks, latest?.valueUsd);
+  }
   const change = hasTrend ? formatChange(coverageChangePct(points)) : null;
   const { label, color } = SERIES[metric];
   const gradientId = useId().replace(/:/g, "");
@@ -62,7 +70,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
       <header className="chart-head">
         <span className="chart-title">{label}</span>
         <div className="chart-summary">
-          {latest ? <strong>{formatUsd(latest.valueUsd, true)}</strong> : null}
+          {latest ? <strong>{priceFormats?.value?.(latest.valueUsd) ?? formatUsd(latest.valueUsd, true)}</strong> : null}
           {change && coverage.coverageHours !== null ? <span className={`tone-${change.tone}`}>{change.text} <small>over {formatDuration(coverage.coverageHours)}</small></span> : null}
         </div>
       </header>
@@ -83,8 +91,13 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
                   : utcLabel(value, false)}
                 tick={AXIS} axisLine={{ stroke: "#2f2e2b" }} tickLine={false} minTickGap={32} tickMargin={8}
               />
-              <YAxis tickFormatter={(value: number) => formatUsd(value, true) ?? ""} tick={AXIS} axisLine={false} tickLine={false} width={62} domain={["auto", "auto"]} />
-              <Tooltip content={<ChartTooltip seriesLabel={label} />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
+              <YAxis
+                tickFormatter={priceFormats?.tick ?? ((value: number) => formatUsd(value, true) ?? "")}
+                tickCount={metric === "priceUsd" ? PRICE_TICK_COUNT : undefined}
+                niceTicks={metric === "priceUsd" ? "adaptive" : undefined}
+                tick={AXIS} axisLine={false} tickLine={false} width={priceFormats?.tick ? "auto" : 62} domain={["auto", "auto"]}
+              />
+              <Tooltip content={<ChartTooltip seriesLabel={label} formatValue={priceFormats?.value} />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
               <Line
                 type="linear" dataKey="valueUsd" name={label} stroke={stroke} strokeWidth={1.75}
                 dot={points.length <= MAX_POINTS_WITH_DOTS && stops.length > 0

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { LiveTokenProfileData } from "@/types/token";
+import type { RootDataProfile } from "@/lib/data/rootdata-profiles";
 import { buildProfileModel, type Card, type DexGroupRow, type ExchangeRow, type PairLine, type PoolRow } from "@/lib/ui/profile-model";
 import { buildProfilePayload, formatProfilePayloadText } from "@/lib/analysis/profile-payload";
 import { formatChange, formatUsd, shortAddress } from "@/lib/ui/format";
@@ -21,11 +22,11 @@ function Change({ value, label }: { value: number | null; label: string }) {
   return <span className="hero-change"><small>{label}</small><b className={`tone-${change.tone}`}>{change.text}</b></span>;
 }
 
-function SectionHead({ eyebrow, title, id, children }: { eyebrow: string; title: string; id: string; children?: ReactNode }) {
+function SectionHead({ eyebrow, title, id, children }: { eyebrow?: string; title: string; id: string; children?: ReactNode }) {
   return (
     <header className="section-head">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
         <h2 id={id}>{title}</h2>
       </div>
       {children}
@@ -155,15 +156,184 @@ function Signals({ items, title = "Divergence signals" }: { items: Card[]; title
   );
 }
 
-export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
+// Brand glyphs from Bootstrap Icons (MIT).
+const projectPlatforms = [
+  { keys: ["website"], label: "Official website", icon: null },
+  { keys: ["x", "twitter"], label: "X / Twitter", icon: "M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865z" },
+  { keys: ["github"], label: "GitHub", icon: "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8" },
+  { keys: ["medium"], label: "Medium", icon: "M9.025 8c0 2.485-2.02 4.5-4.513 4.5A4.506 4.506 0 0 1 0 8c0-2.486 2.02-4.5 4.512-4.5A4.506 4.506 0 0 1 9.025 8m4.95 0c0 2.34-1.01 4.236-2.256 4.236S9.463 10.339 9.463 8c0-2.34 1.01-4.236 2.256-4.236S13.975 5.661 13.975 8M16 8c0 2.096-.355 3.795-.794 3.795-.438 0-.793-1.7-.793-3.795 0-2.096.355-3.795.794-3.795.438 0 .793 1.699.793 3.795" },
+  { keys: ["linkedin"], label: "LinkedIn", icon: "M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z" },
+];
+
+function safeExternalUrl(value: unknown): URL | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function ProjectLinks({ profile }: { profile: RootDataProfile }) {
+  const addresses = new Map<string, string>();
+  const add = (key: unknown, value: unknown) => {
+    if (typeof key !== "string") return;
+    const url = safeExternalUrl(value);
+    if (url) addresses.set(key.trim().toLowerCase(), url.href);
+  };
+
+  if (Array.isArray(profile.social_media)) {
+    for (const item of profile.social_media) {
+      if (!item || typeof item !== "object") continue;
+      const { type, name, url, link } = item as { type?: unknown; name?: unknown; url?: unknown; link?: unknown };
+      add(type || name, url || link);
+    }
+  } else if (profile.social_media && typeof profile.social_media === "object") {
+    for (const [key, value] of Object.entries(profile.social_media)) add(key, value);
+  }
+  add("website", profile.website_url);
+
+  const links = projectPlatforms.flatMap((platform) => {
+    const href = platform.keys.map((key) => addresses.get(key)).find(Boolean);
+    return href ? [{ ...platform, href }] : [];
+  });
+  if (links.length === 0) return null;
+
+  return (
+    <nav className="project-links" aria-label="Official project links">
+      {links.map(({ label, href, icon }) => (
+        <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} title={label}>
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            {icon ? <path fill="currentColor" d={icon} /> : (
+              <g fill="none" stroke="currentColor" strokeWidth="1.25">
+                <circle cx="8" cy="8" r="7" />
+                <ellipse cx="8" cy="8" rx="3" ry="7" />
+                <path d="M1 8h14" />
+              </g>
+            )}
+          </svg>
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+const fundraisingDollars = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 2,
+});
+
+function reportedUsd(value: unknown): string | null {
+  if (typeof value !== "number" && (typeof value !== "string" || !value.trim())) return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) && amount >= 0 ? fundraisingDollars.format(amount) : null;
+}
+
+type ProjectInvestor = { name: string; logo: string | null; contribution: string | null };
+
+function InvestorGrid({ investors }: { investors: ProjectInvestor[] }) {
+  return (
+    <ul className="exchange-grid project-investor-grid">
+      {investors.map(({ name, logo, contribution }) => (
+        <li key={name} className="exchange-box">
+          <span className="exchange-head">
+            <TokenLogo src={logo} symbol={name} size={22} />
+            <span className="exchange-name">{name}</span>
+          </span>
+          {contribution !== null ? <b className="exchange-volume">{contribution}<small> invested</small></b> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function RootDataSection({ profile }: { profile: RootDataProfile }) {
+  const investorsByName = new Map<string, ProjectInvestor>();
+  if (Array.isArray(profile.investors)) {
+    for (const item of profile.investors) {
+      if (!item || typeof item !== "object") continue;
+      const { name, logo, contribution_usd } = item as { name?: unknown; logo?: unknown; contribution_usd?: unknown };
+      if (typeof name !== "string" || !name.trim()) continue;
+      const displayName = name.trim();
+      const key = displayName.toLowerCase();
+      const previous = investorsByName.get(key);
+      const image = safeExternalUrl(logo);
+      const logoUrl = image?.protocol === "https:" && image.hostname.endsWith(".rootdata.com") ? image.href : null;
+      investorsByName.set(key, {
+        name: previous?.name ?? displayName,
+        logo: previous?.logo ?? logoUrl,
+        contribution: previous?.contribution ?? reportedUsd(contribution_usd),
+      });
+    }
+  }
+
+  const investors = [...investorsByName.values()];
+  const funding = reportedUsd(profile.total_funding);
+  const additionalFunding = profile.additionalFunding;
+
+  return (
+    <section className="profile-section rootdata-section" id="rootdata" aria-labelledby="rootdata-title">
+      <SectionHead title="Corporate Profile" id="rootdata-title" />
+      {profile.one_liner ? <p className="rootdata-one-liner">{profile.one_liner}</p> : null}
+      {profile.description ? <p className="rootdata-description">{profile.description}</p> : null}
+      <div className="project-funding">
+        {investors.length > 0 ? (
+          <section aria-labelledby="project-investors-title">
+            <h3 id="project-investors-title">{additionalFunding?.investorLabel ?? "Investors"}</h3>
+            <InvestorGrid investors={investors.slice(0, 12)} />
+            {investors.length > 12 ? (
+              <details className="pool-details">
+                <summary>More investors ({investors.length - 12})</summary>
+                <InvestorGrid investors={investors.slice(12)} />
+              </details>
+            ) : null}
+          </section>
+        ) : null}
+        <dl className="project-funding-total">
+          <dt>{additionalFunding?.label ?? "Total fundraising"}</dt>
+          <dd>{funding ? (additionalFunding?.lowerBound ? "More than " + funding : funding) : "Undisclosed"}</dd>
+        </dl>
+        {additionalFunding ? (
+          <p className="rootdata-description">
+            {additionalFunding.note}{" "}
+            <a href={additionalFunding.profileUrl} target="_blank" rel="noopener noreferrer">CryptoRank profile</a>
+            {" · "}
+            <a href={additionalFunding.amountUrl} target="_blank" rel="noopener noreferrer">Funding source</a>
+            {additionalFunding.investorUrl && additionalFunding.investorUrl !== additionalFunding.amountUrl ? (
+              <>{" · "}<a href={additionalFunding.investorUrl} target="_blank" rel="noopener noreferrer">Investor source</a></>
+            ) : null}
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+export function TokenProfile({ data, rootdataProfile }: { data: LiveTokenProfileData; rootdataProfile: RootDataProfile | null }) {
   const { token } = data;
+  const labelKey = (label: string) => label.trim().replace(/\s+/g, " ").toLowerCase();
+  const headerLabels = new Set([token.chain, token.category, data.isNative ? "Native asset" : ""].map(labelKey));
+  const projectTags = (Array.isArray(rootdataProfile?.tags) ? rootdataProfile.tags : []).flatMap((tag) => {
+    if (typeof tag !== "string") return [];
+    const key = labelKey(tag);
+    if (headerLabels.has(key)) return [];
+    headerLabels.add(key);
+    return [tag.trim()];
+  });
   const model = useMemo(() => buildProfileModel(data), [data]);
+  const navSections = useMemo(
+    () => rootdataProfile ? [{ id: "rootdata", label: "Project" }, ...model.sections] : model.sections,
+    [model.sections, rootdataProfile],
+  );
   const payload = useMemo(() => buildProfilePayload(data), [data]);
   const copyData = useMemo(() => formatProfilePayloadText(payload), [payload]);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [activeSection, setActiveSection] = useState("overview");
   useEffect(() => {
-    const sections = model.sections.map((section) => document.getElementById(section.id))
+    const sections = navSections.map((section) => document.getElementById(section.id))
       .filter((element): element is HTMLElement => element !== null);
     let frame = 0;
     const update = () => {
@@ -183,7 +353,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
     };
-  }, [model.sections]);
+  }, [navSections]);
   // Clicking the header's AI research report button scrolls to the report section
   // and starts generation there; incrementing this counter is the signal DeepAnalysisPanel watches
   // (see its own useEffect) to start a fresh generation even if one is already showing.
@@ -199,9 +369,12 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
 
   return (
     <div className="page profile-page">
-      <nav className="crumbs" aria-label="Breadcrumb">
-        <Link href="/">Research Universe</Link><span aria-hidden="true">/</span><span aria-current="page">{token.name}</span>
-      </nav>
+      <div className="profile-top-bar">
+        <nav className="crumbs" aria-label="Breadcrumb">
+          <Link href="/">Research Universe</Link><span aria-hidden="true">/</span><span aria-current="page">{token.name}</span>
+        </nav>
+        <CopyButton value={copyData} label="token data shown on this page" text="Copy data" />
+      </div>
 
       <header className="profile-header" id="overview">
         <div className="profile-identity">
@@ -212,12 +385,12 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
             <div className="identity-meta">
               <span>{token.chain}</span>
               <span className="chip">{token.category}</span>
+              {projectTags.map((tag) => <span key={tag} className="chip">{tag}</span>)}
               {data.isNative ? <span className="native-tag">Native asset</span> : data.contractAddress ? (
                 <span className="address"><code title={data.contractAddress}>{shortAddress(data.contractAddress)}</code><CopyButton value={data.contractAddress} label="contract address" /></span>
               ) : null}
-              {/* The same canonical dataset the AI analysis receives, as readable text. */}
-              <CopyButton value={copyData} label="token data shown on this page" text="Copy data" />
             </div>
+            {rootdataProfile ? <ProjectLinks profile={rootdataProfile} /> : null}
           </div>
         </div>
         <button className="profile-report-button" type="button" onClick={openAnalysis} aria-controls="deep-ai-analysis" aria-label="Generate a fresh AI research report">
@@ -237,8 +410,10 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
       </header>
 
       <nav className="section-nav" aria-label="Profile sections">
-        {model.sections.map((section) => <a key={section.id} href={`#${section.id}`} aria-current={activeSection === section.id ? "location" : undefined} onClick={() => { setActiveSection(section.id); if (section.id === "sources") setSourcesOpen(true); }}>{section.label}</a>)}
+        {navSections.map((section) => <a key={section.id} href={`#${section.id}`} aria-current={activeSection === section.id ? "location" : undefined} onClick={() => { setActiveSection(section.id); if (section.id === "sources") setSourcesOpen(true); }}>{section.label}</a>)}
       </nav>
+
+      {rootdataProfile ? <RootDataSection profile={rootdataProfile} /> : null}
 
       <section className="profile-section" id="market" aria-labelledby="market-title">
         <SectionHead eyebrow="Token" title="Market snapshot" id="market-title" />
@@ -404,6 +579,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
 
       <SourcesMethodology
         methodology={model.methodology}
+        corporateProfileSource={safeExternalUrl(rootdataProfile?.rootdata_url)?.href}
         open={sourcesOpen}
         onToggle={setSourcesOpen}
       />

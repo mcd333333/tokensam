@@ -14,8 +14,8 @@
   "durable_objects": { "bindings": [{ "name": "PRICE_STREAM", "class_name": "PriceStream" }] },
   "migrations": [{ "tag": "v1-price-stream", "new_sqlite_classes": ["PriceStream"] }],
   "images": { "binding": "IMAGES" },
-  // Fires every 5 minutes: refresh, DexPaprika slices and the daily exchange volumes.
-  "triggers": { "crons": ["*/5 * * * *"] },
+  // Market-data jobs run every 5 minutes; RootData checks daily and only pulls financial summaries when due (14 days).
+  "triggers": { "crons": ["*/5 * * * *", "0 4 * * *"] },
   // Keep variables added in the dashboard (Supabase, AI keys, ...) across deploys.
   "keep_vars": true,
   "vars": {

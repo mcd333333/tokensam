@@ -1,0 +1,310 @@
+{
+  "retrieved_on": "2026-11-18",
+  "token_count": 6,
+  "methodology": "CryptoRank public profiles and official project links. Dates are token launch years. Funding refers to the named entity and financing scope. Investor lists are sourced separately where needed. Treat each funding figure according to its scope when comparing or aggregating records.",
+  "entries": [
+    {
+      "token_id": "theta-tfuel",
+      "chain_id": "theta",
+      "token_symbol": "TFUEL",
+      "project_name": "Theta Fuel",
+      "cryptorank_url": "https://cryptorank.io/price/theta-fuel",
+      "logo_url": "https://images.cryptorank.io/coins/150x150.theta%20fuel1590400712946.png",
+      "establishment_date": "2019",
+      "tags": [
+        "Coin",
+        "Utility token"
+      ],
+      "one_liner": "Theta Network's transaction and operations token",
+      "description": "TFUEL pays for transactions and smart-contract operations on the Theta blockchain. The network also uses TFUEL to reward participants who provide computing or bandwidth resources.",
+      "website_url": "https://www.thetatoken.org/",
+      "social_media": {
+        "X": "https://x.com/theta_network",
+        "github": "https://github.com/thetatoken/theta"
+      },
+      "other_project_links": {
+        "docs": "https://docs.thetatoken.org/"
+      },
+      "profile_sources": {
+        "links": "https://support.thetanetwork.org/hc/en-us/articles/30995267584403-Official-THETA-Websites-Information",
+        "launch": "https://blog.thetatoken.org/theta-fuel-the-operational-token-of-the-theta-network/"
+      },
+      "funding": {
+        "amount_usd": 134000000,
+        "entity": "Theta Network",
+        "scope": "project_total",
+        "amount_source": "https://cryptorank.io/ico/theta-token",
+        "rootdata_token_id": "theta-theta",
+        "investors": [
+          "Blockchain.com",
+          "DCM Ventures",
+          "DHVC",
+          "Heuristic Capital",
+          "LinkVC",
+          "Nirvana Capital",
+          "Node Capital",
+          "Samsung Next",
+          "Sierra Ventures",
+          "Sparkland Capital",
+          "The Venture Reality Fund",
+          "UpHonest Capital",
+          "gumi Cryptos Capital"
+        ],
+        "investor_source": "https://www.rootdata.com/Projects/detail/Theta Network?k=MTIy",
+        "note": "CryptoRank's amount is for THETA's broader project. Investor names are from the RootData Theta Network profile, which reports a $20 million total. The providers' funding figures should be read independently.",
+        "rootdata_reported_total_usd": 20000000
+      }
+    },
+    {
+      "token_id": "ethereum-xaut",
+      "chain_id": "ethereum",
+      "token_symbol": "XAUT",
+      "project_name": "Tether Gold",
+      "cryptorank_url": "https://cryptorank.io/price/tether-gold",
+      "logo_url": "https://images.cryptorank.io/coins/150x150.tether_gold1756891417418.png",
+      "establishment_date": "2020",
+      "tags": [
+        "Token",
+        "RWA",
+        "Gold"
+      ],
+      "one_liner": "Token backed by physical gold",
+      "description": "Each XAUT represents one fine troy ounce of gold in a London Good Delivery bar. Tether provides a lookup for the gold allocated to a holder's address.",
+      "website_url": "https://gold.tether.to/",
+      "social_media": {
+        "X": "https://x.com/tethergold",
+        "issuer_x": "https://x.com/tether"
+      },
+      "other_project_links": {
+        "explorer": "https://etherscan.io/token/0x68749665ff8d2d112fa859aa293f07a622782f38"
+      },
+      "profile_sources": {
+        "links": "https://cascade.team1.network/project/tether-gold",
+        "launch": "https://tether.io/news/tether-gold-launch-meets-growing-demand-for-digital-exposure-to-worlds-most-enduring-asset/"
+      },
+      "funding": {
+        "amount_usd": 88000,
+        "entity": "Tether Gold",
+        "scope": "public_token_sales",
+        "amount_source": "https://cryptorank.io/ico/tether-gold",
+        "rootdata_token_id": null,
+        "investors": null,
+        "investor_source": null,
+        "note": "$48,000 and $40,000 in exchange token sales. Buyer names and a named issuer investor list could not be verified.",
+        "investor_status": "No names verified from public sources"
+      }
+    },
+    {
+      "token_id": "ethereum-paxg",
+      "chain_id": "ethereum",
+      "token_symbol": "PAXG",
+      "project_name": "PAX Gold",
+      "cryptorank_url": "https://cryptorank.io/price/pax-gold",
+      "logo_url": "https://images.cryptorank.io/coins/150x150.pax_gold1756890327694.png",
+      "establishment_date": "2019",
+      "tags": [
+        "Token",
+        "RWA",
+        "Gold"
+      ],
+      "one_liner": "Paxos token backed by vaulted gold",
+      "description": "One PAXG represents one fine troy ounce of London Good Delivery gold held by Paxos Trust Company. PAXG allows fractional units of that gold to be transferred on Ethereum.",
+      "website_url": "https://www.paxos.com/assets/paxg",
+      "social_media": {
+        "X": "https://x.com/Paxos",
+        "linkedin": "https://www.linkedin.com/company/paxos/"
+      },
+      "other_project_links": {
+        "docs": "https://docs.paxos.com/guides/stablecoin/paxg"
+      },
+      "profile_sources": {
+        "links": "https://www.paxos.com/assets/paxg",
+        "launch": "https://www.paxos.com/blog/paxos-launches-pax-gold-physical-gold-on-the-blockchain"
+      },
+      "funding": {
+        "amount_usd": 540000000,
+        "entity": "Paxos",
+        "scope": "issuer_total_lower_bound",
+        "amount_source": "https://insights.paxos.com/hubfs/CryptocurrencyAdoptionandPurchasingBehaviorSurvey.pdf",
+        "rootdata_token_id": null,
+        "investors": [
+          "Bank of America",
+          "Oak HC/FT",
+          "Founders Fund",
+          "Declaration Partners",
+          "Mithril Capital",
+          "PayPal Ventures"
+        ],
+        "investor_source": "https://insights.paxos.com/hubfs/CryptocurrencyAdoptionandPurchasingBehaviorSurvey.pdf",
+        "note": "Paxos reported more than $540 million raised and names these investors in its disclosure."
+      }
+    },
+    {
+      "token_id": "ethereum-wbtc",
+      "chain_id": "ethereum",
+      "token_symbol": "WBTC",
+      "project_name": "Wrapped Bitcoin",
+      "cryptorank_url": "https://cryptorank.io/price/wrapped-bitcoin",
+      "logo_url": "https://images.cryptorank.io/coins/150x150.wrapped%20bitcoin1628063974037.png",
+      "establishment_date": "2019",
+      "tags": [
+        "Token",
+        "Wrapped asset"
+      ],
+      "one_liner": "Tokenized Bitcoin with 1:1 BTC backing",
+      "description": "WBTC represents custodied bitcoin on smart-contract networks, allowing holders to use BTC-denominated value in applications such as lending protocols and decentralized exchanges.",
+      "website_url": "https://www.wbtc.network/",
+      "social_media": {
+        "X": "https://x.com/WrappedBTC",
+        "telegram": "https://t.me/wbtc_community",
+        "linkedin": "https://www.linkedin.com/company/wrappedbtc"
+      },
+      "other_project_links": {
+        "docs": "https://docs.wbtc.network/overview/wbtc-overview",
+        "explorer": "https://etherscan.io/token/0x2260fac5e5542a773aa44fbcfedf7c193bc2c599"
+      },
+      "profile_sources": {
+        "links": "https://www.wbtc.network/",
+        "launch": "https://docs.wbtc.network/overview/wbtc-overview"
+      },
+      "funding": {
+        "amount_usd": 100000000,
+        "entity": "BitGo",
+        "scope": "related_company_series_c",
+        "amount_source": "https://www.bitgo.com/press/bitgo-secures-100m-series-c-funding-at-1-75b-valuation/",
+        "rootdata_token_id": null,
+        "investors": [
+          "Goldman Sachs",
+          "Craft Ventures",
+          "Digital Currency Group",
+          "DRW",
+          "Galaxy Digital Ventures",
+          "Redpoint Ventures",
+          "Valor Equity Partners"
+        ],
+        "investor_source": "https://www.galaxy.com/newsroom/galaxy-digital-to-acquire-bitgo-to-form-pre-eminent-global-provider-of",
+        "note": "BitGo was a WBTC launch partner. The amount is BitGo's Series C only. The named firms are previously disclosed BitGo backers. The Series C announcement does not name its participants."
+      }
+    },
+    {
+      "token_id": "ethereum-usds",
+      "chain_id": "ethereum",
+      "token_symbol": "USDS",
+      "project_name": "USDS",
+      "cryptorank_url": "https://cryptorank.io/price/usds",
+      "logo_url": "https://images.cryptorank.io/coins/150x150.usds1724768606452.png",
+      "establishment_date": "2024",
+      "tags": [
+        "Token",
+        "Stablecoin"
+      ],
+      "one_liner": "Sky Protocol's collateral-backed dollar stablecoin",
+      "description": "USDS tracks the US dollar and is issued by Sky Protocol. Users can convert DAI to USDS and supply USDS to Sky savings products.",
+      "website_url": "https://www.skyeco.com/products",
+      "social_media": {
+        "X": "https://x.com/SkyEcosystem"
+      },
+      "other_project_links": {
+        "docs": "https://developers.skyeco.com/protocol/tokens/usds/",
+        "app": "https://sky.money/",
+        "explorer": "https://etherscan.io/token/0xdc035d45d973e3ec169d2276ddab16f1e407384f"
+      },
+      "profile_sources": {
+        "links": "https://www.skyeco.com/ecosystem",
+        "launch": "https://resources.cryptocompare.com/asset-management/128/1726572487442.pdf"
+      },
+      "funding": {
+        "amount_usd": 61500000,
+        "entity": "Sky (MakerDAO)",
+        "scope": "project_total",
+        "amount_source": "https://www.rootdata.com/Projects/detail/Sky?k=MjQ=",
+        "rootdata_token_id": "maker-mkr",
+        "investors": [
+          "1confirmation",
+          "Bain Capital Ventures",
+          "Distributed Capital Partners",
+          "Dragonfly",
+          "FBG Capital",
+          "ParaFi Capital",
+          "Paradigm",
+          "Polychain",
+          "Uncorrelated",
+          "Walden Bridge Capital",
+          "a16z Frontier"
+        ],
+        "investor_source": "https://www.rootdata.com/Projects/detail/Sky?k=MjQ=",
+        "note": "The amount and investors come from the existing Sky project record under MKR.",
+        "rootdata_reported_total_usd": 61500000
+      }
+    },
+    {
+      "token_id": "ethereum-rlusd",
+      "chain_id": "ethereum",
+      "token_symbol": "RLUSD",
+      "project_name": "Ripple USD",
+      "cryptorank_url": "https://cryptorank.io/price/ripple-usd",
+      "logo_url": "https://images.cryptorank.io/coins/150x150.ripple_usd1770653767927.png",
+      "establishment_date": "2024",
+      "tags": [
+        "Token",
+        "Stablecoin"
+      ],
+      "one_liner": "Ripple's reserve-backed dollar stablecoin",
+      "description": "RLUSD is backed by dollar-denominated reserves. It launched on Ethereum and the XRP Ledger and is designed for payments, trading and settlement.",
+      "website_url": "https://ripple.com/products/stablecoin/",
+      "social_media": {
+        "X": "https://x.com/Ripple",
+        "linkedin": "https://www.linkedin.com/company/ripple"
+      },
+      "other_project_links": {
+        "explorer": "https://etherscan.io/token/0x8292bb45bf1ee4d140127049757c2e0ff06317ed"
+      },
+      "profile_sources": {
+        "links": "https://ripple.com/products/stablecoin/",
+        "launch": "https://ripple.com/ripple-press/raising-the-standard-for-stablecoins-ripple-usd-launches-globally/"
+      },
+      "funding": {
+        "amount_usd": 1058000000,
+        "entity": "Ripple",
+        "scope": "company_total",
+        "amount_source": "https://www.rootdata.com/Projects/detail/Ripple?k=MTA=",
+        "rootdata_token_id": "xrp-xrp",
+        "investors": [
+          "AME Cloud Ventures",
+          "Abstract Ventures",
+          "Accenture Ventures",
+          "BH Digital",
+          "Blockchain Capital",
+          "CME Group",
+          "CME Ventures",
+          "China Growth Capital",
+          "ChinaRock Capital Management",
+          "Citadel Securities",
+          "Core Innovation Capital",
+          "Digital Currency Group",
+          "Galaxy",
+          "Hinge Capital",
+          "IDG Capital",
+          "Lightspeed Venture",
+          "Marshall Wace",
+          "Pantera Capital",
+          "Pathfinder",
+          "RRE Ventures",
+          "Route 66 Ventures",
+          "SBI Holdings",
+          "SCB Digital Ventures",
+          "Santander Innoventures",
+          "Standard Chartered",
+          "Tetragon",
+          "Vast Ventures",
+          "Wicklow Capital",
+          "a16z Frontier"
+        ],
+        "investor_source": "https://www.rootdata.com/Projects/detail/Ripple?k=MTA=",
+        "note": "The amount and investors come from the existing Ripple company record under XRP. Ripple separately confirms a $500 million strategic investment in 2025, which is not added to the RootData total.",
+        "additional_source": "https://ripple.com/ripple-press/ripple-announces-500-million-strategic-investment-led-by-fortress-citadel-securities-valuing-the-company-at-40-billion-following-record-growth/",
+        "rootdata_reported_total_usd": 1058000000
+      }
+    }
+  ]
+}

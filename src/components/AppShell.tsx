@@ -3,6 +3,7 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import { SidebarMovers } from "@/components/SidebarMovers";
 import type { Movers } from "@/lib/ui/movers";
+import { getAppInstallLinks } from "@/lib/ui/app-install-links";
 
 export const EMBLEM = { src: "/brand/token-samurai-emblem.png", width: 1536, height: 1024 } as const;
 export const TAGLINE = "Cut through the noise. Uncover intelligent signal with AI.";
@@ -15,6 +16,7 @@ type CurrentToken = { id: string; name: string; symbol: string; logoUrl: string 
  * data-first.
  */
 export function AppShell({ movers, children }: { active: "universe" | "token" | "none"; current?: CurrentToken; movers?: Movers | null; children: ReactNode }) {
+  const { android, ios } = getAppInstallLinks();
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to content</a>
@@ -23,6 +25,7 @@ export function AppShell({ movers, children }: { active: "universe" | "token" | 
           <Image src={EMBLEM.src} alt="Token Samurai" width={EMBLEM.width} height={EMBLEM.height} sizes="(max-width: 1024px) 72px, 256px" quality={90} preload />
           <span className="mobile-wordmark" aria-hidden="true">Token <b>Samurai</b></span>
         </Link>
+        {(android || ios) && <Link className="sidebar-app-install" href="/get-app">Get the app</Link>}
         {movers ? <SidebarMovers movers={movers} /> : null}
         <div className="sidebar-foot">
           <p className="sidebar-tagline">{TAGLINE}</p>

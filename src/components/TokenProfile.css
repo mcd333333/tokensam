@@ -1,5 +1,8 @@
 /* Profile-specific surfaces keep the research dashboard's styling isolated. */
-.profile-page .crumbs { margin-bottom: 20px; font-size: 12px; }
+.profile-top-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 20px; }
+.profile-page .crumbs { min-width: 0; margin: 0; font-size: 12px; }
+.profile-page .crumbs [aria-current] { overflow-wrap: anywhere; }
+.profile-top-bar > .copy-button { flex-shrink: 0; min-height: 36px; padding: 4px 8px; white-space: nowrap; }
 .profile-page .profile-header { position: relative; isolation: isolate; grid-template-columns: minmax(0, 1fr) minmax(230px, auto); gap: 24px 36px; padding: 30px; margin-bottom: 24px; overflow: hidden; border: 1px solid rgb(205 172 104 / 24%); border-radius: 14px; background: radial-gradient(ellipse at 100% 0%, rgb(205 172 104 / 10%), transparent 65%), linear-gradient(135deg, #19191d, #101216); }
 .profile-page .profile-header::after { position: absolute; z-index: -1; inset: 0; background: var(--asanoha) right center / 56px 97px; opacity: .11; mask-image: linear-gradient(90deg, transparent 35%, #000); content: ""; pointer-events: none; }
 .profile-page .profile-identity { align-self: center; gap: 20px; }
@@ -73,7 +76,8 @@
   .profile-page .profile-identity { align-items: flex-start; gap: 16px; }
   .profile-page .profile-header h1 { font-size: 28px; }
   .profile-page .identity-meta { gap: 6px 10px; }
-  .profile-page .crumbs { font-size: 11px; margin-bottom: 16px; }
+  .profile-top-bar { margin-bottom: 16px; }
+  .profile-page .crumbs { font-size: 11px; }
   .profile-page .section-nav a { padding: 9px 10px; }
   .profile-page .profile-section { padding-top: 26px; }
   .profile-page .section-head h2 { font-size: 21px; }
@@ -91,3 +95,43 @@
 }
 
 .profile-page .methodology, .profile-page #overview { scroll-margin-top: 12px; }
+
+.project-links { display: flex; flex-wrap: wrap; gap: 6px; }
+.project-links a {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink-strong);
+}
+.project-links a:hover { border-color: var(--gold); color: var(--gold); }
+.project-links svg { width: 16px; height: 16px; }
+
+.rootdata-section { border-top: 1px solid rgb(205 172 104 / 15%); }
+.rootdata-one-liner, .rootdata-description { text-align: justify; overflow-wrap: anywhere; }
+.rootdata-one-liner { margin: 0 0 12px; color: var(--ink-strong); font-size: 15px; line-height: 1.65; }
+.rootdata-description { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.85; white-space: pre-wrap; }
+
+.project-funding { margin-top: 24px; }
+.project-investor-grid .exchange-name { white-space: normal; overflow-wrap: anywhere; }
+.project-funding-total {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin: 16px 0 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font-size: 13px;
+}
+.project-funding-total dd { margin: 0; color: var(--ink-strong); font-weight: 700; font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) {
+  .project-links a { width: 44px; height: 44px; }
+  .project-investor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

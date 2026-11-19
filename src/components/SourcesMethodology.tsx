@@ -14,8 +14,9 @@ import { formatUtc } from "@/lib/ui/format";
  * audit but are not rendered: the one research-relevant qualification, the
  * reference-price caveat, is shown under Data freshness.
  */
-export function SourcesMethodology({ methodology, open, onToggle }: {
+export function SourcesMethodology({ methodology, corporateProfileSource, open, onToggle }: {
   methodology: Methodology;
+  corporateProfileSource?: string;
   open: boolean;
   onToggle: (open: boolean) => void;
 }) {
@@ -110,6 +111,12 @@ export function SourcesMethodology({ methodology, open, onToggle }: {
                 <dd>{item.provider}</dd>
               </div>
             ))}
+            {corporateProfileSource ? (
+              <div>
+                <dt>Corporate profile and fundraising</dt>
+                <dd><a href={corporateProfileSource} target="_blank" rel="noopener noreferrer">RootData</a></dd>
+              </div>
+            ) : null}
           </dl>
         </details>
       </div>
