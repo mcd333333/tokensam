@@ -171,11 +171,6 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
     { directFeed: directFeedEnabled(process.env.NEXT_PUBLIC_LIVE_PRICES_DIRECT), tokenIds: [storedToken.id] },
   );
   const token = useMemo(() => applyLivePrices([storedToken], live)[0], [storedToken, live]);
-  const liveEntry = live?.prices[storedToken.id];
-  const livePrice = useMemo(
-    () => ({ source: liveEntry?.s ?? null, at: Number.isFinite(liveEntry?.at) ? (liveEntry?.at as number) : null }),
-    [liveEntry],
-  );
   const model = useMemo(() => buildProfileModel(data), [data]);
   const payload = useMemo(() => buildProfilePayload(data), [data]);
   const copyData = useMemo(() => formatProfilePayloadText(payload), [payload]);
@@ -423,7 +418,6 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
 
       <SourcesMethodology
         methodology={model.methodology}
-        livePrice={livePrice}
         open={sourcesOpen}
         onToggle={setSourcesOpen}
       />

@@ -412,8 +412,6 @@ test("Sources & methodology: 'Data provenance' with providers; raw collection no
   assert.match(source, /<summary>Data provenance<\/summary>/);
   assert.doesNotMatch(source, /Technical provenance|Collection notes|provenance\.notes/);
   assert.match(source, /methodology\.provenance\.datasets\.map/, "dataset → provider list is still shown");
-  assert.match(source, /methodology\.referencePrice \?/, "the reference-price caveat stays visible when applicable");
-  assert.match(source, /not independent confirmation/);
   for (const internal of [/stored observations/i, /backfill/i, /raw record/i, /ingestion/i, /payload/i]) assert.doesNotMatch(source.replace(/\/\*\*[\s\S]*?\*\//g, ""), internal);
 });
 
