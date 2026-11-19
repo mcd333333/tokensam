@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { CartesianGrid, getNiceTickValues, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { HistoricalMetric, HistoricalPeriod, HistoryChartKey, TokenHistoricalData } from "@/types/historical-data";
 import { HISTORICAL_PERIODS, coverageChangePct, pointsInPeriod, riskProfile } from "@/lib/data/historical-series";
+import { smoothGranularPoints } from "@/lib/data/series-smoothing";
 import { directionStops, trendColors } from "@/lib/ui/direction-stops";
 import { formatChange, formatDuration, formatUsd, historyPriceFormatters } from "@/lib/ui/format";
 
@@ -46,9 +47,13 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
   // Windows end at the server time the page was built, not at the latest observation.
   const coverage = series.periods[period];
   const points = pointsInPeriod(series.points, period, new Date(data.asOf));
+  // CoinGecko's 24h volume flips between two levels from one reading to the next for some low-volume tokens, which draws
+  // as vertical bars. The volume chart, its headline value and its change use a centred 7-reading median instead (see
+  // series-smoothing.ts); the stored series and everything else that reads it keep the raw readings.
+  const shown = metric === "volumeUsd" ? smoothGranularPoints(points) : points;
   // A numeric time axis keeps spacing proportional to time when daily and hourly points are mixed.
-  const chartPoints = points.map((item) => ({ time: Date.parse(item.timestamp), valueUsd: item.valueUsd, aggregation: item.aggregation }));
-  const latest = points.at(-1);
+  const chartPoints = shown.map((item) => ({ time: Date.parse(item.timestamp), valueUsd: item.valueUsd, aggregation: item.aggregation }));
+  const latest = shown.at(-1);
   const hasTrend = coverage.status === "available";
   let priceFormats: ReturnType<typeof historyPriceFormatters> | undefined;
   if (metric === "priceUsd") {
@@ -57,7 +62,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
     const ticks = hasTrend && points.length ? getNiceTickValues(domain, PRICE_TICK_COUNT, true, "adaptive") : [];
     priceFormats = historyPriceFormatters(ticks, latest?.valueUsd);
   }
-  const change = hasTrend ? formatChange(coverageChangePct(points)) : null;
+  const change = hasTrend ? formatChange(coverageChangePct(shown)) : null;
   const { label, color } = SERIES[metric];
   const gradientId = useId().replace(/:/g, "");
   const stops = directionStops(chartPoints);
@@ -97,7 +102,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
                 niceTicks={metric === "priceUsd" ? "adaptive" : undefined}
                 tick={AXIS} axisLine={false} tickLine={false} width={priceFormats?.tick ? "auto" : 62} domain={["auto", "auto"]}
               />
-              <Tooltip content={<ChartTooltip seriesLabel={label} formatValue={priceFormats?.value} />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
+              <Tooltip content={<ChartTooltip seriesLabel={metric === "volumeUsd" ? `${label} · 7-reading median` : label} formatValue={priceFormats?.value} />} cursor={{ stroke: "#6d6559", strokeDasharray: "3 3" }} />
               <Line
                 type="linear" dataKey="valueUsd" name={label} stroke={stroke} strokeWidth={1.75}
                 dot={points.length <= MAX_POINTS_WITH_DOTS && stops.length > 0
@@ -119,6 +124,7 @@ function ChartCard({ metric, data, period, wide = false }: { metric: HistoricalM
       )}
       <footer className="chart-foot">
         <span>{coverage.coverageLabel}</span>
+        {metric === "volumeUsd" && coverage.observationCount > 1 ? <span title="Provider volume readings can flip between two levels; each point is the median of the 7 readings around it.">Smoothed · 7-reading median</span> : null}
         {hasTrend && !coverage.fullCoverage && coverage.coverageHours !== null ? <span className="chart-partial">Partial: {formatDuration(coverage.coverageHours)} of {period}</span> : null}
       </footer>
     </article>

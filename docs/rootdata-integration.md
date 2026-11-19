@@ -39,3 +39,15 @@ The RootData scheduled route uses the Worker's existing `CRON_SECRET` authorizat
 ## Attribution
 
 Keep the `rootdata_url` on each profile and link it under Data provenance in the token profile's Sources & methodology panel.
+
+## Investor logos for the CryptoRank/press profiles
+
+Six tokens have no RootData project match (PAXG, RLUSD, XAUT, TFUEL, USDS, WBTC), so their profiles come from `src/data/cryptorank-token-profiles.json`, which lists investors by name only. `src/data/investor-logos.json` maps those names to RootData-hosted logos so the investor cards show images instead of letters:
+
+- 58 names exactly match an investor with a logo in the stored RootData profiles.
+- Oak HC/FT and Valor Equity Partners are exact investor matches from RootData's free `ser_inv` search.
+- Bank of America is an exact-name match, but RootData files it as a project rather than an investor; its logo is the bank's.
+- DRW uses the logo of RootData's `DRW Venture Capital`, DRW's venture arm (the name in the profile is the parent).
+- Mithril Capital and Galaxy Digital Ventures have no verified RootData match and keep a letter.
+
+The page only renders logos hosted on `*.rootdata.com`. To refresh the map after a new profile is added, search the new investor names with `ser_inv` (search requests do not spend credits) and add exact matches.

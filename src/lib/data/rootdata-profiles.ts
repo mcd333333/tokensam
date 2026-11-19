@@ -1,6 +1,7 @@
 import "server-only";
 
 import cryptoRankProfiles from "@/data/cryptorank-token-profiles.json";
+import investorLogos from "@/data/investor-logos.json";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type RootDataProfile = {
@@ -57,7 +58,8 @@ function getCryptoRankProfile(tokenId: string): RootDataProfile | null {
     website_url: profile.website_url,
     social_media: { ...profile.social_media, ...profile.other_project_links },
     total_funding: funding.amount_usd,
-    investors: funding.investors?.map((name) => ({ name })) ?? [],
+    // The CryptoRank/press data lists investors by name only; logos come from the matching RootData investor image.
+    investors: funding.investors?.map((name) => ({ name, logo: investorLogos.logos[name as keyof typeof investorLogos.logos] ?? null })) ?? [],
     static_collected_at: cryptoRankProfiles.retrieved_on,
     financial_collected_at: null,
     additionalFunding: {
