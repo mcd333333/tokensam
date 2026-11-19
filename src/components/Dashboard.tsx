@@ -12,7 +12,7 @@ import { formatChange, formatRatio, formatShare, formatUsd } from "@/lib/ui/form
 import { TokenLogo } from "@/components/TokenLogo";
 import { PageFooter } from "@/components/AppShell";
 import { UniverseHero } from "@/components/UniverseHero";
-import { applyLivePrices, livePricesUrl } from "@/lib/ui/live-prices";
+import { applyLivePrices, directFeedEnabled, livePricesUrl } from "@/lib/ui/live-prices";
 import { useLivePrices } from "@/lib/ui/use-live-prices";
 import { usePriceFlashes } from "@/lib/ui/use-price-flash";
 import type { FlashDirection } from "@/lib/ui/price-flash";
@@ -68,10 +68,13 @@ export default function Dashboard({ tokens, error, dataUpdatedAt, refreshStatus,
   const [sort, setSort] = useState<SortState>({ key: DEFAULT_SORT_KEY, direction: "desc" });
   const [page, setPage] = useState(1);
 
-  // Live price and 24h change, polled from the Worker while the tab is visible. Everything
-  // else on the row stays as server-rendered; applyLivePrices returns `tokens` unchanged
-  // when there is nothing to apply, so a poll that moved no price re-renders nothing.
-  const live = useLivePrices(livePricesUrl(process.env.NEXT_PUBLIC_LIVE_PRICES_URL));
+  // Live price and 24h change, polled from the Worker while the tab is visible and, for tokens
+  // Coinbase lists, streamed straight from Coinbase (NEXT_PUBLIC_LIVE_PRICES_DIRECT=0 turns that
+  // off). Everything else on the row stays as server-rendered; applyLivePrices returns `tokens`
+  // unchanged when there is nothing to apply, so an update that moved no price re-renders nothing.
+  const live = useLivePrices(livePricesUrl(process.env.NEXT_PUBLIC_LIVE_PRICES_URL), undefined, {
+    directFeed: directFeedEnabled(process.env.NEXT_PUBLIC_LIVE_PRICES_DIRECT),
+  });
   const liveTokens = useMemo(() => applyLivePrices(tokens, live), [tokens, live]);
 
   const priceFlashes = usePriceFlashes(liveTokens);

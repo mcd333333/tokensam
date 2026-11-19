@@ -10,6 +10,9 @@ import { HistoryCharts } from "@/components/HistoricalSection";
 import { IndicatorCard, TechnicalIndicators } from "@/components/TechnicalIndicators";
 import { DeepAnalysisPanel } from "@/components/DeepAnalysisPanel";
 import { SourcesMethodology } from "@/components/SourcesMethodology";
+import { applyLivePrices, directFeedEnabled, livePricesUrl } from "@/lib/ui/live-prices";
+import { liveSourceFor } from "@/lib/ui/live-source";
+import { useLivePrices } from "@/lib/ui/use-live-prices";
 import { TokenLogo } from "@/components/TokenLogo";
 import { CopyButton } from "@/components/CopyButton";
 import { PageFooter } from "@/components/AppShell";
@@ -156,7 +159,23 @@ function Signals({ items, title = "Divergence signals" }: { items: Card[]; title
 }
 
 export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
-  const { token } = data;
+  const { token: storedToken } = data;
+  // Live price, 24h change and the figures derived from them, streamed from the exchange that quotes this token
+  // (Coinbase, else Binance) while the tab is visible. The page itself may be served from an edge cache, so this is
+  // what keeps the header current; the stored profile below it is unchanged. A token no exchange quotes keeps its
+  // server-rendered price and opens no connection.
+  const liveSource = liveSourceFor(storedToken.id);
+  const live = useLivePrices(
+    liveSource ? livePricesUrl(process.env.NEXT_PUBLIC_LIVE_PRICES_URL) : null,
+    undefined,
+    { directFeed: directFeedEnabled(process.env.NEXT_PUBLIC_LIVE_PRICES_DIRECT), tokenIds: [storedToken.id] },
+  );
+  const token = useMemo(() => applyLivePrices([storedToken], live)[0], [storedToken, live]);
+  const liveEntry = live?.prices[storedToken.id];
+  const livePrice = useMemo(
+    () => ({ source: liveEntry?.s ?? null, at: Number.isFinite(liveEntry?.at) ? (liveEntry?.at as number) : null }),
+    [liveEntry],
+  );
   const model = useMemo(() => buildProfileModel(data), [data]);
   const payload = useMemo(() => buildProfilePayload(data), [data]);
   const copyData = useMemo(() => formatProfilePayloadText(payload), [payload]);
@@ -404,6 +423,7 @@ export function TokenProfile({ data }: { data: LiveTokenProfileData }) {
 
       <SourcesMethodology
         methodology={model.methodology}
+        livePrice={livePrice}
         open={sourcesOpen}
         onToggle={setSourcesOpen}
       />

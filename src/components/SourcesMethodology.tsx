@@ -1,7 +1,30 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import type { Methodology } from "@/lib/ui/profile-model";
 import { formatUtc } from "@/lib/ui/format";
+import { FRESHNESS_DISPLAY_MAX_AGE_MS, liveFreshnessRow, visibleFreshness, type LivePriceStatus } from "@/lib/ui/freshness-display";
+
+const CLOCK_TICK_MS = 15_000;
+function subscribeToClock(onChange: () => void): () => void {
+  const timer = setInterval(onChange, CLOCK_TICK_MS);
+  return () => clearInterval(timer);
+}
+/** The clock rounded down to the tick, so the snapshot is stable between ticks and React re-renders only when it moves. */
+function clockSnapshot(): number {
+  return Math.floor(Date.now() / CLOCK_TICK_MS) * CLOCK_TICK_MS;
+}
+function serverClockSnapshot(): null {
+  return null;
+}
+
+/**
+ * The visitor's clock, to within 15 seconds, or null on the server and during hydration, so both render the same markup
+ * and the freshness rules (which depend on the visitor's own time) are applied right after.
+ */
+function useNow(): number | null {
+  return useSyncExternalStore<number | null>(subscribeToClock, clockSnapshot, serverClockSnapshot);
+}
 
 /**
  * Methodology, collapsed by default and kept short: what Token Samurai does
@@ -14,11 +37,17 @@ import { formatUtc } from "@/lib/ui/format";
  * audit but are not rendered: the one research-relevant qualification, the
  * reference-price caveat, is shown under Data freshness.
  */
-export function SourcesMethodology({ methodology, open, onToggle }: {
+export function SourcesMethodology({ methodology, livePrice, open, onToggle }: {
   methodology: Methodology;
+  /** Which live feed quotes this token and when it was last confirmed; drives the "Live exchange price" row. */
+  livePrice?: LivePriceStatus;
   open: boolean;
   onToggle: (open: boolean) => void;
 }) {
+  const now = useNow();
+  const freshness = visibleFreshness(methodology.freshness, now);
+  const liveRow = liveFreshnessRow(livePrice, now);
+  const hiddenCount = methodology.freshness.length - freshness.length;
   return (
     <details className="methodology" id="sources" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
       <summary>
@@ -56,9 +85,16 @@ export function SourcesMethodology({ methodology, open, onToggle }: {
 
           <section aria-labelledby="sources-freshness">
             <h3 id="sources-freshness">Data freshness</h3>
-            {methodology.freshness.length > 0 ? (
+            {freshness.length > 0 || liveRow ? (
               <ul className="freshness-list" aria-label="Data freshness for this token">
-                {methodology.freshness.map((item) => (
+                {liveRow ? (
+                  <li key="live-exchange-price" className="freshness-row current">
+                    <span className="freshness-dot" aria-hidden="true" />
+                    <span className="freshness-label">{liveRow.label}</span>
+                    <span className="freshness-age" title="Streamed from the exchange into this page; the price shown in the header is this price.">{liveRow.text}</span>
+                  </li>
+                ) : null}
+                {freshness.map((item) => (
                   <li key={item.label} className={`freshness-row ${item.state ?? "neutral"}`}>
                     <span className="freshness-dot" aria-hidden="true" />
                     <span className="freshness-label">{item.label}</span>
@@ -75,7 +111,18 @@ export function SourcesMethodology({ methodology, open, onToggle }: {
                   </li>
                 ))}
               </ul>
-            ) : <p className="muted-copy">No data has been collected for this token yet.</p>}
+            ) : (
+              <p className="muted-copy">
+                {methodology.freshness.length === 0
+                  ? "No data has been collected for this token yet."
+                  : `No dataset was refreshed in the last ${FRESHNESS_DISPLAY_MAX_AGE_MS / 60_000} minutes.`}
+              </p>
+            )}
+            {hiddenCount > 0 ? (
+              <p className="methodology-note">
+                Datasets last refreshed more than {FRESHNESS_DISPLAY_MAX_AGE_MS / 60_000} minutes ago are not listed here.
+              </p>
+            ) : null}
             {methodology.referencePrice ? (
               <p className="methodology-note">
                 Reference token price <b className="numeric">{methodology.referencePrice.value}</b>
