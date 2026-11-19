@@ -186,6 +186,21 @@ function localInvestorLogo(value: unknown): string | null {
   return typeof value === "string" && /^\/investor-logos\/[a-z0-9-]+\.png$/.test(value) ? value : null;
 }
 
+/** Source links for a profile built from CryptoRank/press data, shown under Data provenance instead of beside the investors. */
+function cryptoRankAttribution(profile: RootDataProfile | null): { label: string; href: string }[] {
+  const extra = profile?.additionalFunding;
+  if (!extra) return [];
+  const links: { label: string; href: string }[] = [];
+  const add = (label: string, value: unknown) => {
+    const href = safeExternalUrl(value)?.href;
+    if (href && !links.some((link) => link.href === href)) links.push({ label, href });
+  };
+  add("CryptoRank", extra.profileUrl);
+  add("Funding source", extra.amountUrl);
+  add("Investor source", extra.investorUrl);
+  return links;
+}
+
 function ProjectLinks({ profile }: { profile: RootDataProfile }) {
   const addresses = new Map<string, string>();
   const add = (key: unknown, value: unknown) => {
@@ -307,17 +322,6 @@ function RootDataSection({ profile }: { profile: RootDataProfile }) {
           <dt>{additionalFunding?.label ?? "Total fundraising"}</dt>
           <dd>{funding ? (additionalFunding?.lowerBound ? "More than " + funding : funding) : "Undisclosed"}</dd>
         </dl>
-        {additionalFunding ? (
-          <p className="rootdata-description">
-            {additionalFunding.note}{" "}
-            <a href={additionalFunding.profileUrl} target="_blank" rel="noopener noreferrer">CryptoRank profile</a>
-            {" · "}
-            <a href={additionalFunding.amountUrl} target="_blank" rel="noopener noreferrer">Funding source</a>
-            {additionalFunding.investorUrl && additionalFunding.investorUrl !== additionalFunding.amountUrl ? (
-              <>{" · "}<a href={additionalFunding.investorUrl} target="_blank" rel="noopener noreferrer">Investor source</a></>
-            ) : null}
-          </p>
-        ) : null}
       </div>
     </section>
   );
@@ -602,6 +606,7 @@ export function TokenProfile({ data, rootdataProfile }: { data: LiveTokenProfile
       <SourcesMethodology
         methodology={model.methodology}
         corporateProfileSource={safeExternalUrl(rootdataProfile?.rootdata_url)?.href}
+        corporateProfileLinks={cryptoRankAttribution(rootdataProfile)}
         open={sourcesOpen}
         onToggle={setSourcesOpen}
       />
